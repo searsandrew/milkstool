@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7518f766eab8f0b97f7930c9be40e6e1",
+    "content-hash": "25466f0ad5972560cf91f125821754cb",
     "packages": [
         {
             "name": "brick/math",
@@ -3332,6 +3332,58 @@
                 "source": "https://github.com/ramsey/uuid/tree/4.9.4"
             },
             "time": "2026-09-16T11:39:30+00:00"
+        },
+        {
+            "name": "searsandrew/briar-rose",
+            "version": "v0.2.9",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/searsandrew/briar-rose.git",
+                "reference": "63174717217ac678bf657b145dcac77314f685dd"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/searsandrew/briar-rose/zipball/63174717217ac678bf657b145dcac77314f685dd",
+                "reference": "63174717217ac678bf657b145dcac77314f685dd",
+                "shasum": ""
+            },
+            "require": {
+                "guzzlehttp/guzzle": "^7.5|^8.0",
+                "illuminate/http": "^10.0|^11.0|^12.0|^13.0",
+                "illuminate/support": "^10.0|^11.0|^12.0|^13.0",
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "orchestra/testbench": "^8.0|^9.0|^10.0|^11.0",
+                "pestphp/pest": "^3.0|^4.0",
+                "pestphp/pest-plugin-laravel": "^3.0|^4.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "BriarRose": "Searsandrew\\BriarRose\\Facades\\BriarRose"
+                    },
+                    "providers": [
+                        "Searsandrew\\BriarRose\\BriarRoseServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Searsandrew\\BriarRose\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "description": "NetSuite RESTlet + SuiteTalk REST client for Laravel (OAuth 1.0a TBA, HMAC-SHA256).",
+            "support": {
+                "issues": "https://github.com/searsandrew/briar-rose/issues",
+                "source": "https://github.com/searsandrew/briar-rose/tree/v0.2.9"
+            },
+            "time": "2026-08-27T14:52:37+00:00"
         },
         {
             "name": "symfony/clock",
