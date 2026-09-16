@@ -132,3 +132,13 @@ it('reports connection failures without creating a customer', function () {
 
     $this->assertDatabaseCount('companies', 0);
 });
+
+it('accepts a database lock refresh in the same second when ownership is retained', function () {
+    config()->set('cache.default', 'database');
+    $this->travelTo(now()->startOfSecond());
+    fakeSalesOrderImport([sourceLine()]);
+
+    $this->artisan('milkstool:sync-sales-orders', ['customer' => '16'])->assertSuccessful();
+
+    expect(Company::query()->sole()->sales_orders_synced_at)->not->toBeNull();
+});

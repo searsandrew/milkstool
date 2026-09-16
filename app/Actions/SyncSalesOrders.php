@@ -51,7 +51,7 @@ class SyncSalesOrders
                     throw new RuntimeException('Sales order '.$order['id'].' changed during import. Retry the sync.');
                 }
 
-                if (! $lock->refresh(600)) {
+                if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
                     throw new RuntimeException('The sync lock expired. Retry the sync.');
                 }
 
@@ -61,7 +61,7 @@ class SyncSalesOrders
                 $onProgress?->__invoke($orders, $lineCount);
             }
 
-            if (! $lock->refresh(600)) {
+            if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
                 throw new RuntimeException('The sync lock expired. Retry the sync.');
             }
 
