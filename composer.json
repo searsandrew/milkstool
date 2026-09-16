@@ -47,7 +47,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "@php artisan queue:work --queue=urgent,default,backfill --tries=3 --timeout=60"
+            "@php artisan queue:work netsuite --queue=sales-orders --tries=3 --timeout=1200"
         ],
         "test": [
             "@php artisan config:clear --ansi @no_additional_args",

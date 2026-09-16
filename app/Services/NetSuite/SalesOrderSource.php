@@ -2,6 +2,7 @@
 
 namespace App\Services\NetSuite;
 
+use Carbon\CarbonImmutable;
 use Generator;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Validator;
@@ -39,17 +40,48 @@ class SalesOrderSource
         return $customer;
     }
 
+    public function currentTime(): CarbonImmutable
+    {
+        $page = $this->query("SELECT TO_CHAR(SYS_EXTRACT_UTC(CURRENT_TIMESTAMP), 'YYYY-MM-DD HH24:MI:SS') AS current_time FROM DUAL");
+
+        if (count($page['items']) !== 1 || $page['hasMore']) {
+            throw new RuntimeException('NetSuite did not return a reliable source clock.');
+        }
+
+        Validator::make($page['items'][0], [
+            'current_time' => ['required', 'date_format:Y-m-d H:i:s'],
+        ])->validate();
+
+        return CarbonImmutable::parse($page['items'][0]['current_time'], 'UTC');
+    }
+
     /** @return Generator<int, array<string, mixed>> */
-    public function orders(int $customerId): Generator
+    public function orders(int $customerId, ?CarbonImmutable $modifiedSince = null, ?CarbonImmutable $modifiedUntil = null): Generator
     {
         $this->assertPositiveId($customerId);
         $lastId = 0;
+        $window = '';
+
+        if (($modifiedSince === null) !== ($modifiedUntil === null) || ($modifiedSince !== null && $modifiedSince->greaterThan($modifiedUntil))) {
+            throw new InvalidArgumentException('Provide an ordered pair of source timestamps for incremental sync.');
+        }
+
+        if ($modifiedSince !== null) {
+            $since = $modifiedSince->setTimezone('UTC')->format('Y-m-d H:i:s');
+            $until = $modifiedUntil->setTimezone('UTC')->format('Y-m-d H:i:s');
+            $window = " AND SYS_EXTRACT_UTC(lastmodifieddate) >= TO_TIMESTAMP('{$since}', 'YYYY-MM-DD HH24:MI:SS')"
+                ." AND SYS_EXTRACT_UTC(lastmodifieddate) <= TO_TIMESTAMP('{$until}', 'YYYY-MM-DD HH24:MI:SS')";
+        }
 
         do {
-            $page = $this->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id > {$lastId} ORDER BY id");
+            $page = $this->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id > {$lastId}{$window} ORDER BY id");
 
             foreach ($page['items'] as $order) {
                 $this->validateOrder($order, $customerId);
+
+                if ($modifiedSince !== null && ! CarbonImmutable::parse($order['updated_at'], 'UTC')->betweenIncluded($modifiedSince, $modifiedUntil)) {
+                    throw new RuntimeException('NetSuite returned an order outside the requested modification window.');
+                }
 
                 if ((int) $order['id'] <= $lastId) {
                     throw new RuntimeException('NetSuite sales-order pagination did not advance.');

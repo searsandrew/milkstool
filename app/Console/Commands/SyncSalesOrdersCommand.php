@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Actions\SyncSalesOrders;
+use App\Jobs\RefreshSalesOrders;
 use Illuminate\Console\Command;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -12,7 +13,7 @@ use Searsandrew\BriarRose\Exceptions\BriarRoseConfigurationException;
 
 class SyncSalesOrdersCommand extends Command
 {
-    protected $signature = 'milkstool:sync-sales-orders {customer : NetSuite customer internal ID} {--resume : Reuse saved orders whose source headers still match}';
+    protected $signature = 'milkstool:sync-sales-orders {customer : NetSuite customer internal ID} {--resume : Reuse saved orders whose source headers still match} {--incremental : Refresh changed orders, with an initial and weekly full scan} {--queue : Queue an incremental refresh instead of running now}';
 
     protected $description = 'Import all sales orders and lines for one NetSuite customer (read-only in NetSuite)';
 
@@ -26,12 +27,25 @@ class SyncSalesOrdersCommand extends Command
             return self::FAILURE;
         }
 
+        if ($this->option('resume') && ($this->option('incremental') || $this->option('queue'))) {
+            $this->error('Use --resume only with a full foreground import.');
+
+            return self::FAILURE;
+        }
+
+        if ($this->option('queue')) {
+            RefreshSalesOrders::dispatch($customerId);
+            $this->info('Background refresh requested for NetSuite customer '.$customerId.'. Duplicate pending requests are ignored.');
+
+            return self::SUCCESS;
+        }
+
         $this->info('Importing sales orders for NetSuite customer '.$customerId.'.');
 
         try {
             $counts = $sync->handle($customerId, function (int $orders, int $lines): void {
                 $this->line("Processed {$orders} orders / {$lines} lines.");
-            }, resume: (bool) $this->option('resume'));
+            }, resume: (bool) $this->option('resume'), incremental: (bool) $this->option('incremental'));
         } catch (RequestException $exception) {
             $this->error('NetSuite returned HTTP '.$exception->response->status().'. The import did not complete.');
 
@@ -50,7 +64,9 @@ class SyncSalesOrdersCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info("Sync complete: {$counts['orders']} orders, {$counts['lines']} lines. Local order count matches this import.");
+        $this->info($this->option('incremental')
+            ? "Refresh complete: {$counts['orders']} orders, {$counts['lines']} lines processed. Source checkpoint saved."
+            : "Sync complete: {$counts['orders']} orders, {$counts['lines']} lines. Local order count matches this import.");
 
         return self::SUCCESS;
     }

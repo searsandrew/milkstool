@@ -31,6 +31,15 @@ return [
 
     'connections' => [
 
+        'netsuite' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => 'sales-orders',
+            'retry_after' => 1260,
+            'after_commit' => false,
+        ],
+
         'sync' => [
             'driver' => 'sync',
         ],

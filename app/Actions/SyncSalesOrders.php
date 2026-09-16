@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Exceptions\SalesOrderSyncInterrupted;
 use App\Models\Company;
 use App\Models\Transaction;
 use App\Services\NetSuite\SalesOrderSource;
@@ -20,12 +21,12 @@ class SyncSalesOrders
      * @param  (Closure(int, int): void)|null  $onProgress
      * @return array{orders: int, lines: int}
      */
-    public function handle(int $customerId, ?Closure $onProgress = null, bool $resume = false): array
+    public function handle(int $customerId, ?Closure $onProgress = null, bool $resume = false, bool $incremental = false): array
     {
         $lock = Cache::lock('netsuite-sales-orders:'.$customerId, 600);
 
         if (! $lock->get()) {
-            throw new RuntimeException('A sales-order sync is already running for this customer.');
+            throw new SalesOrderSyncInterrupted('A sales-order sync is already running for this customer.');
         }
 
         $company = null;
@@ -43,8 +44,19 @@ class SyncSalesOrders
             $company->forceFill(['sales_orders_sync_started_at' => now(), 'sales_orders_sync_error' => null])->save();
             $orders = 0;
             $lineCount = 0;
+            $checkpoint = $incremental ? $this->source->currentTime()->subMinutes(2) : null;
+            $fullScan = ! $incremental || $company->sales_orders_checkpoint_at === null
+                || $company->sales_orders_full_synced_at === null
+                || $company->sales_orders_full_synced_at->lte(now()->subWeek());
 
-            $batches = LazyCollection::make(fn () => $this->source->orders($customerId))->chunk(50);
+            if ($checkpoint !== null && $company->sales_orders_checkpoint_at?->greaterThan($checkpoint)) {
+                throw new SalesOrderSyncInterrupted('NetSuite source time moved backwards. Retry the sync later.');
+            }
+
+            $since = $fullScan ? null : $company->sales_orders_checkpoint_at->subMinutes(5);
+            $until = $fullScan ? null : $checkpoint;
+            $resume = $resume && ! $incremental;
+            $batches = LazyCollection::make(fn () => $this->source->orders($customerId, $since, $until))->chunk(50);
 
             foreach ($batches as $batch) {
                 $pending = [];
@@ -71,13 +83,13 @@ class SyncSalesOrders
 
                     foreach ($pending as $id => $order) {
                         if ($latestOrders[$id]['updated_at'] !== $order['updated_at']) {
-                            throw new RuntimeException('Sales order '.$id.' changed during import. Retry the sync.');
+                            throw new SalesOrderSyncInterrupted('Sales order '.$id.' changed during import. Retry the sync.');
                         }
                     }
 
                     foreach ($pending as $id => $order) {
                         if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
-                            throw new RuntimeException('The sync lock expired. Retry the sync.');
+                            throw new SalesOrderSyncInterrupted('The sync lock expired. Retry the sync.');
                         }
 
                         $this->storeOrder($company, $latestOrders[$id], $batchLines[$id]);
@@ -87,23 +99,29 @@ class SyncSalesOrders
                 }
 
                 if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
-                    throw new RuntimeException('The sync lock expired. Retry the sync.');
+                    throw new SalesOrderSyncInterrupted('The sync lock expired. Retry the sync.');
                 }
 
                 $onProgress?->__invoke($orders, $lineCount);
             }
 
             if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
-                throw new RuntimeException('The sync lock expired. Retry the sync.');
+                throw new SalesOrderSyncInterrupted('The sync lock expired. Retry the sync.');
             }
 
             $localOrders = $company->transactions()->where('type', 'SalesOrd')->count();
 
-            if ($localOrders !== $orders) {
+            if ($fullScan && $localOrders !== $orders) {
                 throw new RuntimeException("NetSuite returned {$orders} orders, but {$localOrders} are stored locally. Missing source orders were retained; reconciliation is required.");
             }
 
-            $company->forceFill(['sales_orders_synced_at' => now(), 'sales_orders_sync_error' => null])->save();
+            $company->forceFill([
+                'sales_orders_synced_at' => now(),
+                'sales_orders_checkpoint_at' => $checkpoint,
+                'sales_orders_full_synced_at' => $fullScan && ! $resume ? now() : $company->sales_orders_full_synced_at,
+                'sales_orders_next_sync_at' => now()->addHours(6),
+                'sales_orders_sync_error' => null,
+            ])->save();
 
             return ['orders' => $orders, 'lines' => $lineCount];
         } catch (Throwable $exception) {

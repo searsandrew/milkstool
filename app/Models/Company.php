@@ -23,6 +23,9 @@ class Company extends Model
             'raw_payload' => 'array',
             'sales_orders_sync_started_at' => 'immutable_datetime',
             'sales_orders_synced_at' => 'immutable_datetime',
+            'sales_orders_checkpoint_at' => 'immutable_datetime',
+            'sales_orders_full_synced_at' => 'immutable_datetime',
+            'sales_orders_next_sync_at' => 'immutable_datetime',
         ];
     }
 
