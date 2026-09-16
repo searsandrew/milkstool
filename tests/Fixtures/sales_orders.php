@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 
 function fakeNetSuiteConfiguration(): void
 {
@@ -11,6 +12,7 @@ function fakeNetSuiteConfiguration(): void
         'rest' => ['retries' => ['enabled' => false]],
     ]));
     Http::preventStrayRequests();
+    Sleep::fake();
 }
 
 /** @return array<string, mixed> */

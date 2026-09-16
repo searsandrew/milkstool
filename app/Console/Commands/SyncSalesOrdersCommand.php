@@ -12,7 +12,7 @@ use Searsandrew\BriarRose\Exceptions\BriarRoseConfigurationException;
 
 class SyncSalesOrdersCommand extends Command
 {
-    protected $signature = 'milkstool:sync-sales-orders {customer : NetSuite customer internal ID}';
+    protected $signature = 'milkstool:sync-sales-orders {customer : NetSuite customer internal ID} {--resume : Reuse saved orders whose source headers still match}';
 
     protected $description = 'Import all sales orders and lines for one NetSuite customer (read-only in NetSuite)';
 
@@ -30,8 +30,8 @@ class SyncSalesOrdersCommand extends Command
 
         try {
             $counts = $sync->handle($customerId, function (int $orders, int $lines): void {
-                $this->line("Imported {$orders} orders / {$lines} lines.");
-            });
+                $this->line("Processed {$orders} orders / {$lines} lines.");
+            }, resume: (bool) $this->option('resume'));
         } catch (RequestException $exception) {
             $this->error('NetSuite returned HTTP '.$exception->response->status().'. The import did not complete.');
 

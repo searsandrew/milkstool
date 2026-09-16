@@ -142,3 +142,31 @@ it('accepts a database lock refresh in the same second when ownership is retaine
 
     expect(Company::query()->sole()->sales_orders_synced_at)->not->toBeNull();
 });
+
+it('resumes matching saved orders without downloading their lines again', function () {
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceOrder()]))
+        ->push(sourcePage([sourceLine()]))->push(sourcePage([sourceOrder()]))
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceOrder()]))]);
+    app(SyncSalesOrders::class)->handle(16);
+
+    $this->artisan('milkstool:sync-sales-orders', ['customer' => '16', '--resume' => true])->assertSuccessful();
+
+    $this->assertDatabaseCount('transactions', 1);
+    $this->assertDatabaseCount('transaction_lines', 1);
+    Http::assertSentCount(6);
+});
+
+it('fetches multiple orders and their lines in one bounded batch', function () {
+    $second = sourceOrder(['id' => '102', 'number' => 'SO102']);
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceOrder(), $second]))
+        ->push(sourcePage([sourceLine(), sourceLine(['transaction_id' => '102'])]))
+        ->push(sourcePage([sourceOrder(), $second]))]);
+
+    $this->artisan('milkstool:sync-sales-orders', ['customer' => '16'])->assertSuccessful();
+
+    $this->assertDatabaseCount('transactions', 2);
+    $this->assertDatabaseCount('transaction_lines', 2);
+    Http::assertSentCount(4);
+});

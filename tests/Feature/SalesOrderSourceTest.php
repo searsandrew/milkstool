@@ -66,7 +66,7 @@ it('rejects duplicate lines before an importer can overwrite existing data', fun
         sourceLine(), sourceLine(),
     ]))]);
 
-    expect(fn () => app(SalesOrderSource::class)->lines(16, 101))->toThrow(ValidationException::class);
+    expect(fn () => app(SalesOrderSource::class)->lines(16, 101))->toThrow(RuntimeException::class);
 });
 
 it('rejects missing customers', function () {
@@ -79,4 +79,38 @@ it('rejects an empty line response instead of clearing saved lines', function ()
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([]))]);
 
     expect(fn () => app(SalesOrderSource::class)->lines(16, 101))->toThrow(RuntimeException::class);
+});
+
+it('retries a dropped connection to a read-only SuiteQL query', function () {
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+        ->pushFailedConnection()->push(sourcePage([sourceCustomer()]))]);
+
+    expect(app(SalesOrderSource::class)->customer(16)['id'])->toBe('16');
+
+    Http::assertSentCount(2);
+});
+
+it('paginates batched lines across order boundaries without losing line zero', function () {
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+        ->push(sourcePage([sourceLine(['line_id' => '99'])], true))
+        ->push(sourcePage([sourceLine(['transaction_id' => '102', 'line_id' => '0'])]))]);
+
+    $lines = app(SalesOrderSource::class)->linesForOrders(16, [101, 102]);
+
+    expect(array_keys($lines))->toBe([101, 102]);
+    expect($lines[102][0]['line_id'])->toBe('0');
+    Http::assertSent(fn (Request $request): bool => str_contains($request['q'], 'transactionline.transaction > 101')
+        && str_contains($request['q'], 'transactionline.id > 99'));
+});
+
+it('refuses incomplete header verification for a batch', function () {
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([sourceOrder()]))]);
+
+    expect(fn () => app(SalesOrderSource::class)->ordersByIds(16, [101, 102]))->toThrow(RuntimeException::class);
+});
+
+it('refuses lines from an order outside the requested batch', function () {
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([sourceLine(['transaction_id' => '999'])]))]);
+
+    expect(fn () => app(SalesOrderSource::class)->linesForOrders(16, [101, 102]))->toThrow(ValidationException::class);
 });

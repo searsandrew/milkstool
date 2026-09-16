@@ -3,10 +3,12 @@
 namespace App\Services\NetSuite;
 
 use Generator;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Validator;
 use InvalidArgumentException;
 use RuntimeException;
 use Searsandrew\BriarRose\BriarRoseManager;
+use Throwable;
 
 class SalesOrderSource
 {
@@ -78,10 +80,47 @@ class SalesOrderSource
     /** @return list<array<string, mixed>> */
     public function lines(int $customerId, int $orderId): array
     {
-        $this->assertPositiveId($customerId);
-        $this->assertPositiveId($orderId);
-        $lastId = -1;
-        $lines = [];
+        return $this->linesForOrders($customerId, [$orderId])[$orderId];
+    }
+
+    /**
+     * @param  list<int>  $orderIds
+     * @return array<int, array<string, mixed>>
+     */
+    public function ordersByIds(int $customerId, array $orderIds): array
+    {
+        $ids = $this->orderIdList($customerId, $orderIds);
+        $page = $this->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id IN ({$ids}) ORDER BY id");
+        $orders = [];
+
+        foreach ($page['items'] as $order) {
+            $this->validateOrder($order, $customerId);
+            $id = (int) $order['id'];
+
+            if (! in_array($id, $orderIds, true) || isset($orders[$id])) {
+                throw new RuntimeException('NetSuite returned an unexpected or duplicate sales order.');
+            }
+
+            $orders[$id] = $order;
+        }
+
+        if ($page['hasMore'] || count($orders) !== count($orderIds)) {
+            throw new RuntimeException('A sales order disappeared or moved during import. Retry the sync.');
+        }
+
+        return $orders;
+    }
+
+    /**
+     * @param  list<int>  $orderIds
+     * @return array<int, list<array<string, mixed>>>
+     */
+    public function linesForOrders(int $customerId, array $orderIds): array
+    {
+        $ids = $this->orderIdList($customerId, $orderIds);
+        $lastOrderId = 0;
+        $lastLineId = -1;
+        $lines = array_fill_keys($orderIds, []);
 
         do {
             $page = $this->query(<<<SQL
@@ -95,14 +134,16 @@ class SalesOrderSource
                 JOIN transaction ON transaction.id = transactionline.transaction
                 LEFT JOIN item ON item.id = transactionline.item
                 WHERE transaction.entity = {$customerId} AND transaction.type = 'SalesOrd'
-                    AND transactionline.transaction = {$orderId} AND transactionline.id > {$lastId}
-                ORDER BY transactionline.id
+                    AND transactionline.transaction IN ({$ids})
+                    AND (transactionline.transaction > {$lastOrderId}
+                        OR (transactionline.transaction = {$lastOrderId} AND transactionline.id > {$lastLineId}))
+                ORDER BY transactionline.transaction, transactionline.id
                 SQL);
 
             foreach ($page['items'] as $line) {
                 Validator::make($line, [
-                    'transaction_id' => ['required', 'integer', 'in:'.$orderId],
-                    'line_id' => ['required', 'integer', 'gt:'.$lastId],
+                    'transaction_id' => ['required', 'integer', 'in:'.$ids],
+                    'line_id' => ['required', 'integer', 'min:0'],
                     'item_id' => ['nullable', 'integer'],
                     'item_number' => ['nullable', 'string', 'max:255'],
                     'memo' => ['nullable', 'string'],
@@ -114,17 +155,95 @@ class SalesOrderSource
                     'discount_line' => ['required', 'in:T,F'],
                     'line_type' => ['nullable', 'string', 'max:255'],
                 ])->validate();
+                $orderId = (int) $line['transaction_id'];
+                $lineId = (int) $line['line_id'];
 
-                $lastId = (int) $line['line_id'];
-                $lines[] = $line;
+                if ($orderId < $lastOrderId || ($orderId === $lastOrderId && $lineId <= $lastLineId)) {
+                    throw new RuntimeException('NetSuite line pagination did not advance.');
+                }
+
+                $lastOrderId = $orderId;
+                $lastLineId = $lineId;
+                $lines[$orderId][] = $line;
             }
         } while ($page['hasMore']);
 
-        if ($lines === []) {
-            throw new RuntimeException('NetSuite returned no lines for the sales order; existing data was retained.');
+        foreach ($lines as $orderLines) {
+            if ($orderLines === []) {
+                throw new RuntimeException('NetSuite returned no lines for a sales order; existing data was retained.');
+            }
         }
 
         return $lines;
+    }
+
+    /** @param list<int> $orderIds */
+    private function orderIdList(int $customerId, array $orderIds): string
+    {
+        $this->assertPositiveId($customerId);
+
+        if ($orderIds === [] || count($orderIds) > 50 || count(array_unique($orderIds)) !== count($orderIds)) {
+            throw new InvalidArgumentException('Request between 1 and 50 distinct sales-order IDs.');
+        }
+
+        foreach ($orderIds as $id) {
+            if (! is_int($id)) {
+                throw new InvalidArgumentException('NetSuite IDs must be positive integers.');
+            }
+
+            $this->assertPositiveId($id);
+        }
+
+        return implode(',', $orderIds);
+    }
+
+    /** @return array{orders: list<array<string, mixed>>, lines: list<array<string, mixed>>} */
+    public function controlTotals(int $customerId): array
+    {
+        $this->assertPositiveId($customerId);
+        $orders = $this->query(<<<SQL
+            SELECT currency AS currency_id, COUNT(*) AS order_count,
+                TO_CHAR(SUM(total)) AS total, TO_CHAR(SUM(foreigntotal)) AS foreign_total
+            FROM transaction
+            WHERE entity = {$customerId} AND type = 'SalesOrd'
+            GROUP BY currency
+            ORDER BY currency
+            SQL);
+        $lines = $this->query(<<<SQL
+            SELECT transaction.currency AS currency_id, COUNT(*) AS line_count,
+                COUNT(transactionline.quantity) AS quantity_count,
+                COUNT(transactionline.netamount) AS amount_count,
+                TO_CHAR(NVL(SUM(transactionline.quantity), 0)) AS quantity,
+                TO_CHAR(NVL(SUM(transactionline.netamount), 0)) AS amount,
+                TO_CHAR(NVL(SUM(CASE WHEN transactionline.mainline = 'F' THEN transactionline.netamount ELSE 0 END), 0)) AS detail_amount
+            FROM transactionline
+            JOIN transaction ON transaction.id = transactionline.transaction
+            WHERE transaction.entity = {$customerId} AND transaction.type = 'SalesOrd'
+            GROUP BY transaction.currency
+            ORDER BY transaction.currency
+            SQL);
+
+        if ($orders['hasMore'] || $lines['hasMore']) {
+            throw new RuntimeException('NetSuite control totals were truncated; reconciliation cannot complete.');
+        }
+
+        Validator::make($orders, [
+            'items.*.currency_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'items.*.order_count' => ['required', 'integer', 'min:1'],
+            'items.*.total' => ['required', 'numeric'],
+            'items.*.foreign_total' => ['required', 'numeric'],
+        ])->validate();
+        Validator::make($lines, [
+            'items.*.currency_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'items.*.line_count' => ['required', 'integer', 'min:1'],
+            'items.*.quantity_count' => ['required', 'integer', 'min:0'],
+            'items.*.amount_count' => ['required', 'integer', 'min:0'],
+            'items.*.quantity' => ['required', 'numeric'],
+            'items.*.amount' => ['required', 'numeric'],
+            'items.*.detail_amount' => ['required', 'numeric'],
+        ])->validate();
+
+        return ['orders' => $orders['items'], 'lines' => $lines['items']];
     }
 
     private function headerSql(): string
@@ -158,7 +277,11 @@ class SalesOrderSource
     /** @return array{items: list<array<string, mixed>>, hasMore: bool} */
     private function query(string $sql): array
     {
-        $page = $this->briarRose->rest()->suiteql()->query($sql, ['limit' => 1000])->throw()->json();
+        $page = retry(3,
+            fn (): mixed => $this->briarRose->rest()->suiteql()->query($sql, ['limit' => 1000])->throw()->json(),
+            500,
+            fn (Throwable $exception): bool => $exception instanceof ConnectionException,
+        );
         Validator::make((array) $page, [
             'items' => ['present', 'array', 'list'],
             'items.*' => ['required', 'array'],

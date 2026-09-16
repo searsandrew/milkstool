@@ -8,6 +8,7 @@ use App\Services\NetSuite\SalesOrderSource;
 use Closure;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\LazyCollection;
 use RuntimeException;
 use Throwable;
 
@@ -19,7 +20,7 @@ class SyncSalesOrders
      * @param  (Closure(int, int): void)|null  $onProgress
      * @return array{orders: int, lines: int}
      */
-    public function handle(int $customerId, ?Closure $onProgress = null): array
+    public function handle(int $customerId, ?Closure $onProgress = null, bool $resume = false): array
     {
         $lock = Cache::lock('netsuite-sales-orders:'.$customerId, 600);
 
@@ -43,21 +44,52 @@ class SyncSalesOrders
             $orders = 0;
             $lineCount = 0;
 
-            foreach ($this->source->orders($customerId) as $order) {
-                $lines = $this->source->lines($customerId, (int) $order['id']);
-                $latest = $this->source->order($customerId, (int) $order['id']);
+            $batches = LazyCollection::make(fn () => $this->source->orders($customerId))->chunk(50);
 
-                if ($latest['updated_at'] !== $order['updated_at']) {
-                    throw new RuntimeException('Sales order '.$order['id'].' changed during import. Retry the sync.');
+            foreach ($batches as $batch) {
+                $pending = [];
+                $existing = $resume
+                    ? $company->transactions()->where('type', 'SalesOrd')->whereIn('netsuite_id', $batch->pluck('id'))
+                        ->withCount('lines')->get()->keyBy('netsuite_id')
+                    : collect();
+
+                foreach ($batch as $order) {
+                    $saved = $existing->get((int) $order['id']);
+
+                    if ($saved !== null && $saved->raw_payload == $order && $saved->lines_count > 0) {
+                        $orders++;
+                        $lineCount += $saved->lines_count;
+                    } else {
+                        $pending[(int) $order['id']] = $order;
+                    }
+                }
+
+                if ($pending !== []) {
+                    $ids = array_keys($pending);
+                    $batchLines = $this->source->linesForOrders($customerId, $ids);
+                    $latestOrders = $this->source->ordersByIds($customerId, $ids);
+
+                    foreach ($pending as $id => $order) {
+                        if ($latestOrders[$id]['updated_at'] !== $order['updated_at']) {
+                            throw new RuntimeException('Sales order '.$id.' changed during import. Retry the sync.');
+                        }
+                    }
+
+                    foreach ($pending as $id => $order) {
+                        if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
+                            throw new RuntimeException('The sync lock expired. Retry the sync.');
+                        }
+
+                        $this->storeOrder($company, $latestOrders[$id], $batchLines[$id]);
+                        $orders++;
+                        $lineCount += count($batchLines[$id]);
+                    }
                 }
 
                 if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
                     throw new RuntimeException('The sync lock expired. Retry the sync.');
                 }
 
-                $this->storeOrder($company, $latest, $lines);
-                $orders++;
-                $lineCount += count($lines);
                 $onProgress?->__invoke($orders, $lineCount);
             }
 
