@@ -58,10 +58,11 @@ class SyncCustomers
                 }
             }
 
-            return $counts;
         } finally {
             $lock->release();
         }
+
+        return $counts;
     }
 
     /** @param array<string, mixed> $customer */
