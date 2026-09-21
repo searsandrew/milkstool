@@ -4,45 +4,23 @@ namespace App\Services\NetSuite;
 
 use Carbon\CarbonImmutable;
 use Generator;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Validator;
 use InvalidArgumentException;
 use RuntimeException;
-use Searsandrew\BriarRose\BriarRoseManager;
-use Throwable;
 
 class SalesOrderSource
 {
-    public function __construct(private BriarRoseManager $briarRose) {}
+    public function __construct(private SuiteQlClient $client, private CustomerSource $customers) {}
 
     /** @return array<string, mixed> */
     public function customer(int $customerId): array
     {
-        $this->assertPositiveId($customerId);
-        $page = $this->query('SELECT id, companyname AS name, custentity3 AS account_number, salesrep AS sales_rep_id, isinactive, '
-            ."TO_CHAR(SYS_EXTRACT_UTC(lastmodifieddate), 'YYYY-MM-DD HH24:MI:SS') AS updated_at "
-            ."FROM customer WHERE id = {$customerId}");
-
-        if (count($page['items']) !== 1 || $page['hasMore']) {
-            throw new RuntimeException('NetSuite customer was not found or is not accessible.');
-        }
-
-        $customer = $page['items'][0];
-        Validator::make($customer, [
-            'id' => ['required', 'integer', 'in:'.$customerId],
-            'name' => ['required', 'string', 'max:255'],
-            'account_number' => ['nullable', 'string', 'max:255'],
-            'sales_rep_id' => ['nullable', 'integer', 'min:1'],
-            'isinactive' => ['required', 'in:T,F'],
-            'updated_at' => ['required', 'date_format:Y-m-d H:i:s'],
-        ])->validate();
-
-        return $customer;
+        return $this->customers->find($customerId);
     }
 
     public function currentTime(): CarbonImmutable
     {
-        $page = $this->query("SELECT TO_CHAR(SYS_EXTRACT_UTC(CURRENT_TIMESTAMP), 'YYYY-MM-DD HH24:MI:SS') AS current_time FROM DUAL");
+        $page = $this->client->query("SELECT TO_CHAR(SYS_EXTRACT_UTC(CURRENT_TIMESTAMP), 'YYYY-MM-DD HH24:MI:SS') AS current_time FROM DUAL");
 
         if (count($page['items']) !== 1 || $page['hasMore']) {
             throw new RuntimeException('NetSuite did not return a reliable source clock.');
@@ -74,7 +52,7 @@ class SalesOrderSource
         }
 
         do {
-            $page = $this->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id > {$lastId}{$window} ORDER BY id");
+            $page = $this->client->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id > {$lastId}{$window} ORDER BY id");
 
             foreach ($page['items'] as $order) {
                 $this->validateOrder($order, $customerId);
@@ -98,7 +76,7 @@ class SalesOrderSource
     {
         $this->assertPositiveId($customerId);
         $this->assertPositiveId($orderId);
-        $page = $this->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id = {$orderId}");
+        $page = $this->client->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id = {$orderId}");
 
         if (count($page['items']) !== 1 || $page['hasMore'] || (int) ($page['items'][0]['id'] ?? 0) !== $orderId) {
             throw new RuntimeException('The sales order disappeared or moved while it was being imported. Retry the sync.');
@@ -122,7 +100,7 @@ class SalesOrderSource
     public function ordersByIds(int $customerId, array $orderIds): array
     {
         $ids = $this->orderIdList($customerId, $orderIds);
-        $page = $this->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id IN ({$ids}) ORDER BY id");
+        $page = $this->client->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id IN ({$ids}) ORDER BY id");
         $orders = [];
 
         foreach ($page['items'] as $order) {
@@ -155,7 +133,7 @@ class SalesOrderSource
         $lines = array_fill_keys($orderIds, []);
 
         do {
-            $page = $this->query(<<<SQL
+            $page = $this->client->query(<<<SQL
                 SELECT transactionline.transaction AS transaction_id, transactionline.id AS line_id,
                     transactionline.item AS item_id, item.itemid AS item_number,
                     transactionline.quantity, transactionline.rate, transactionline.netamount AS amount,
@@ -233,7 +211,7 @@ class SalesOrderSource
     public function controlTotals(int $customerId): array
     {
         $this->assertPositiveId($customerId);
-        $orders = $this->query(<<<SQL
+        $orders = $this->client->query(<<<SQL
             SELECT currency AS currency_id, COUNT(*) AS order_count,
                 TO_CHAR(SUM(total)) AS total, TO_CHAR(SUM(foreigntotal)) AS foreign_total
             FROM transaction
@@ -241,7 +219,7 @@ class SalesOrderSource
             GROUP BY currency
             ORDER BY currency
             SQL);
-        $lines = $this->query(<<<SQL
+        $lines = $this->client->query(<<<SQL
             SELECT transaction.currency AS currency_id, COUNT(*) AS line_count,
                 COUNT(transactionline.quantity) AS quantity_count,
                 COUNT(transactionline.netamount) AS amount_count,
@@ -304,27 +282,6 @@ class SalesOrderSource
             'memo' => ['nullable', 'string'],
             'updated_at' => ['required', 'date_format:Y-m-d H:i:s'],
         ])->validate();
-    }
-
-    /** @return array{items: list<array<string, mixed>>, hasMore: bool} */
-    private function query(string $sql): array
-    {
-        $page = retry(3,
-            fn (): mixed => $this->briarRose->rest()->suiteql()->query($sql, ['limit' => 1000])->throw()->json(),
-            500,
-            fn (Throwable $exception): bool => $exception instanceof ConnectionException,
-        );
-        Validator::make((array) $page, [
-            'items' => ['present', 'array', 'list'],
-            'items.*' => ['required', 'array'],
-            'hasMore' => ['required', 'boolean'],
-        ])->validate();
-
-        if ($page['hasMore'] && $page['items'] === []) {
-            throw new RuntimeException('NetSuite returned an empty page with more results pending.');
-        }
-
-        return ['items' => $page['items'], 'hasMore' => (bool) $page['hasMore']];
     }
 
     private function assertPositiveId(int $id): void

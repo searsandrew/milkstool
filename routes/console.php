@@ -9,3 +9,9 @@ Schedule::command('milkstool:dispatch-sales-order-refreshes')
     ->withoutOverlapping(10)
     ->onOneServer()
     ->when(fn (): bool => config('netsuite-sync.scheduled'));
+
+Schedule::command('milkstool:sync-customers --queue')
+    ->hourly()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->when(fn (): bool => config('netsuite-sync.scheduled'));
