@@ -10,18 +10,21 @@ use Laravel\Sanctum\NewAccessToken;
 
 class IssueApiToken extends Command
 {
-    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--days=90 : Token lifetime in days}';
+    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--days=90 : Token lifetime in days} {--customer=* : Grant transaction reads for these NetSuite IDs, or all for a trusted service}';
 
-    protected $description = 'Create a client if needed and issue a status:read API token';
+    protected $description = 'Create a client if needed and issue an API token with optional customer transaction access';
 
     public function handle(): int
     {
         $validator = Validator::make([
             'client' => $this->argument('client'),
             'days' => $this->option('days'),
+            'customers' => $this->option('customer'),
         ], [
             'client' => ['required', 'string', 'max:100', 'regex:/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/'],
             'days' => ['required', 'integer', 'between:1,3650'],
+            'customers' => ['array'],
+            'customers.*' => ['required', 'string', 'regex:/\A(?:all|[1-9][0-9]*)\z/'],
         ]);
 
         if ($validator->fails()) {
@@ -32,10 +35,18 @@ class IssueApiToken extends Command
             return self::FAILURE;
         }
 
-        $token = DB::transaction(function (): NewAccessToken {
+        $abilities = ['status:read'];
+        if ($this->option('customer') !== []) {
+            $abilities[] = 'transactions:read';
+            foreach (array_unique($this->option('customer')) as $customer) {
+                $abilities[] = $customer === 'all' ? 'customers:all' : 'customer:'.$customer;
+            }
+        }
+
+        $token = DB::transaction(function () use ($abilities): NewAccessToken {
             $client = ApiClient::query()->firstOrCreate(['name' => $this->argument('client')]);
 
-            return $client->createToken('service', ['status:read'], now()->addDays((int) $this->option('days')));
+            return $client->createToken('service', $abilities, now()->addDays((int) $this->option('days')));
         });
 
         $this->info('Token ID: '.$token->accessToken->getKey());
