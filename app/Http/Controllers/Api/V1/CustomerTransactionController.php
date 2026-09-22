@@ -21,6 +21,9 @@ class CustomerTransactionController extends Controller
             'to' => ['sometimes', 'date_format:Y-m-d', ...($request->has('from') ? ['after_or_equal:from'] : [])],
             'per_page' => ['sometimes', 'integer', 'between:1,100'],
             'page' => ['sometimes', 'integer', 'min:1'],
+            'sort_by' => ['sometimes', 'in:number,date,status,amount'],
+            'sort_direction' => ['sometimes', 'in:asc,desc'],
+            'search' => ['sometimes', 'nullable', 'string', 'max:200'],
         ]);
         if ($request->boolean('outstanding') && isset($filters['type']) && $filters['type'] !== 'CustInvc') {
             throw ValidationException::withMessages(['outstanding' => 'Outstanding amounts are available for invoices only.']);
@@ -39,7 +42,19 @@ class CustomerTransactionController extends Controller
             $query->where('transaction_date', '<=', $filters['to']);
         }
 
-        return TransactionResource::collection($query->orderByDesc('transaction_date')->orderByDesc('netsuite_id')
+        $search = trim($filters['search'] ?? '');
+        if ($search !== '') {
+            $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
+            $query->where(function ($query) use ($pattern) {
+                $query->whereRaw("number LIKE ? ESCAPE '!'", [$pattern])
+                    ->orWhereRaw("purchase_order_number LIKE ? ESCAPE '!'", [$pattern]);
+            });
+        }
+        $sortColumns = ['number' => 'number', 'date' => 'transaction_date', 'status' => 'status_name', 'amount' => 'foreign_total'];
+        $sortColumn = $sortColumns[$filters['sort_by'] ?? 'date'];
+        $direction = $filters['sort_direction'] ?? 'desc';
+
+        return TransactionResource::collection($query->orderBy($sortColumn, $direction)->orderBy('netsuite_id', $direction)
             ->paginate($filters['per_page'] ?? 25)->withQueryString())
             ->additional(['sync' => new CustomerSyncResource($customer)]);
     }

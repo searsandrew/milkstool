@@ -130,3 +130,49 @@ it('marks old and interrupted invoice histories as requiring refresh', function 
         'invoices_sync_started_at' => $state === 'unfinished_attempt' ? now() : null])->save();
     $this->getJson('/api/v1/customers/16/invoice-summary')->assertOk()->assertJsonPath('sync.invoices.status', $state);
 })->with(['stale', 'unfinished_attempt']);
+
+it('sorts the complete customer history before pagination with stable ties', function (string $sort, string $column, array $values) {
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+    foreach ($values as $index => $value) {
+        Transaction::factory()->for($this->company)->create(['netsuite_id' => 100 + $index, 'type' => 'CustInvc', $column => $value]);
+    }
+    Transaction::factory()->create(['netsuite_id' => 999, 'type' => 'CustInvc', $column => $values[1]]);
+    foreach (['asc' => [101, 102, 100], 'desc' => [100, 102, 101]] as $direction => $ids) {
+        foreach ($ids as $index => $id) {
+            $this->getJson('/api/v1/customers/16/transactions?'.http_build_query([
+                'type' => 'CustInvc', 'sort_by' => $sort, 'sort_direction' => $direction, 'per_page' => 1, 'page' => $index + 1,
+            ]))->assertOk()->assertJsonPath('data.0.netsuite_id', $id)->assertJsonPath('meta.total', 3);
+        }
+    }
+    Http::assertNothingSent();
+})->with([
+    'number' => ['number', 'number', ['INV-30', 'INV-10', 'INV-10']],
+    'date' => ['date', 'transaction_date', ['2026-03-01', '2026-01-01', '2026-01-01']],
+    'status label' => ['status', 'status_name', ['Paid In Full', 'Open', 'Open']],
+    'numeric amount' => ['amount', 'foreign_total', ['100', '9', '9']],
+]);
+
+it('combines literal search with sorting pagination type and customer scope', function (string $type) {
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+    Transaction::factory()->for($this->company)->create(['netsuite_id' => 100, 'type' => $type, 'number' => 'DOC-50%_!', 'foreign_total' => '20']);
+    Transaction::factory()->for($this->company)->create(['netsuite_id' => 101, 'type' => $type, 'number' => 'OTHER', 'purchase_order_number' => 'PO-50%_!', 'foreign_total' => '9']);
+    Transaction::factory()->for($this->company)->create(['type' => $type, 'number' => 'DOC-50000']);
+    Transaction::factory()->for($this->company)->create(['type' => 'SalesOrd', 'purchase_order_number' => 'PO-50%_!']);
+    Transaction::factory()->create(['type' => $type, 'purchase_order_number' => 'PO-50%_!']);
+    foreach ([101, 100] as $index => $id) {
+        $this->getJson('/api/v1/customers/16/transactions?'.http_build_query([
+            'type' => $type, 'search' => ' 50%_! ', 'sort_by' => 'amount', 'sort_direction' => 'asc', 'per_page' => 1, 'page' => $index + 1,
+        ]))->assertOk()->assertJsonPath('meta.total', 2)->assertJsonPath('data.0.netsuite_id', $id);
+    }
+    Http::assertNothingSent();
+})->with(['CustInvc', 'CustCred', 'CustPymt']);
+
+it('rejects unsupported sort and search input', function (string $field, mixed $value) {
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+
+    $this->getJson('/api/v1/customers/16/transactions?'.http_build_query([$field => $value]))
+        ->assertUnprocessable()->assertJsonValidationErrors($field);
+})->with([
+    ['sort_by', 'raw_payload'], ['sort_by', 'number desc; drop table transactions'],
+    ['sort_direction', 'sideways'], ['search', str_repeat('a', 201)], ['search', ['unexpected']],
+]);
