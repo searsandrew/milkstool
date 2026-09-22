@@ -4,6 +4,7 @@ namespace App\Actions;
 
 use App\Exceptions\ReceivableSyncInterrupted;
 use App\Models\Company;
+use App\Services\NetSuite\CreditMemoApplicationSource;
 use App\Services\NetSuite\CreditMemoReconciliation;
 use App\Services\NetSuite\CreditMemoSource;
 use App\Services\NetSuite\CustomerSource;
@@ -15,7 +16,7 @@ use Throwable;
 
 class SyncCreditMemos
 {
-    public function __construct(private CreditMemoSource $source, private CustomerSource $customers, private StoreCreditMemo $store, private CreditMemoReconciliation $reconciliation) {}
+    public function __construct(private CreditMemoSource $source, private CreditMemoApplicationSource $applications, private CustomerSource $customers, private StoreCreditMemo $store, private CreditMemoReconciliation $reconciliation) {}
 
     /**
      * @param  (Closure(int, int): void)|null  $onProgress
@@ -40,6 +41,11 @@ class SyncCreditMemos
             foreach (LazyCollection::make(fn () => $this->source->creditMemos($customerId))->chunk(50) as $batch) {
                 $ids = $batch->map(fn (array $creditMemo): int => (int) $creditMemo['id'])->values()->all();
                 $lines = $this->source->linesForCreditMemos($customerId, $ids);
+                $applications = $this->applications->forCreditMemos($customerId, $ids);
+                $latestApplications = $this->applications->forCreditMemos($customerId, $ids);
+                if ($applications != $latestApplications) {
+                    throw new ReceivableSyncInterrupted('Credit memo applications changed during import. Retry the sync.');
+                }
                 $latest = $this->source->creditMemosByIds($customerId, $ids);
                 foreach ($batch as $creditMemo) {
                     if ($creditMemo != $latest[(int) $creditMemo['id']]) {
@@ -51,7 +57,7 @@ class SyncCreditMemos
                         throw new ReceivableSyncInterrupted('The credit memo sync lock expired. Retry the sync.');
                     }
                     $creditMemoLines = $lines[(int) $creditMemo['id']];
-                    $this->store->handle($company, $creditMemo, $creditMemoLines);
+                    $this->store->handle($company, $creditMemo, $creditMemoLines, $applications[(int) $creditMemo['id']]);
                     $creditMemos++;
                     $lineCount += count($creditMemoLines);
                 }

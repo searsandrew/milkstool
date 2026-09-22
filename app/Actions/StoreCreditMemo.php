@@ -13,13 +13,14 @@ class StoreCreditMemo
      * Persist a validated, complete NetSuite credit memo while the caller holds the customer credit memo lock.
      *
      * @param  array<string, mixed>  $creditMemo
+     * @param  list<array<string, mixed>>  $applications
      * @param  list<array<string, mixed>>  $lines
      */
-    public function handle(Company $company, array $creditMemo, array $lines): Transaction
+    public function handle(Company $company, array $creditMemo, array $lines, array $applications): Transaction
     {
         $creditMemoId = (int) $creditMemo['id'];
 
-        return DB::transaction(function () use ($company, $creditMemoId, $creditMemo, $lines): Transaction {
+        return DB::transaction(function () use ($company, $creditMemoId, $creditMemo, $lines, $applications): Transaction {
             $transaction = Transaction::query()->firstOrNew(['netsuite_id' => $creditMemoId]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'CustCred')) {
@@ -50,6 +51,23 @@ class StoreCreditMemo
                 ]);
             }
             $transaction->lines()->whereNotIn('netsuite_line_id', $lineIds)->delete();
+
+            $applicationIds = [];
+            foreach ($applications as $application) {
+                $stored = $transaction->creditMemoApplications()->updateOrCreate([
+                    'credit_line_id' => $application['credit_line_id'],
+                    'target_netsuite_id' => $application['target_netsuite_id'],
+                    'target_line_id' => $application['target_line_id'],
+                ], [
+                    'target_customer_id' => $application['target_customer_id'] ?? null,
+                    'target_currency_id' => $application['target_currency_id'] ?? null,
+                    'target_type' => $application['target_type'] ?? null,
+                    'foreign_amount' => $application['foreign_amount'] ?? null,
+                    'raw_payload' => $application,
+                ]);
+                $applicationIds[] = $stored->id;
+            }
+            $transaction->creditMemoApplications()->whereNotIn('id', $applicationIds)->delete();
 
             return $transaction;
         });

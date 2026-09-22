@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\ResponseSequence;
 use Illuminate\Support\Facades\Http;
 
 /** @param array<string, mixed> $overrides
@@ -26,4 +28,12 @@ function fakeSingleInvoice(array $lines, array $header = []): void
 {
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceInvoice($header)]))->push(sourcePage($lines))->push(sourcePage([sourceInvoice($header)]))]);
+}
+
+function fakeEmptyCreditApplications(ResponseSequence $sequence): Closure
+{
+    return function (Request $request) use ($sequence): mixed {
+        return str_contains($request['q'] ?? '', 'FROM NextTransactionLineLink')
+            ? Http::response(sourcePage([])) : $sequence($request);
+    };
 }

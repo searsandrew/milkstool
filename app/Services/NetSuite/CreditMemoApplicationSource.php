@@ -2,20 +2,20 @@
 
 namespace App\Services\NetSuite;
 
-class PaymentApplicationSource
+class CreditMemoApplicationSource
 {
     public function __construct(private TransactionApplicationSource $source) {}
 
     /** @param list<int> $ids
      * @return array<int, list<array<string, mixed>>>
      */
-    public function forPayments(int $customerId, array $ids): array
+    public function forCreditMemos(int $customerId, array $ids): array
     {
-        $documents = $this->source->forTransactions($customerId, $ids, 'CustPymt');
+        $documents = $this->source->forTransactions($customerId, $ids, 'CustCred');
         foreach ($documents as &$rows) {
             foreach ($rows as &$row) {
-                $row['payment_id'] = $row['source_id'];
-                $row['payment_line_id'] = $row['source_line_id'];
+                $row['credit_memo_id'] = $row['source_id'];
+                $row['credit_line_id'] = $row['source_line_id'];
                 unset($row['source_id'], $row['source_line_id']);
             }
             unset($row);
@@ -28,6 +28,6 @@ class PaymentApplicationSource
     /** @return list<array<string, mixed>> */
     public function controlTotals(int $customerId): array
     {
-        return $this->source->controlTotals($customerId, 'CustPymt');
+        return $this->source->controlTotals($customerId, 'CustCred');
     }
 }

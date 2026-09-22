@@ -51,22 +51,22 @@ it('batches creditMemos and reconciles currencies without mixing sales orders or
     Transaction::factory()->for($company)->create();
     Transaction::factory()->create(['type' => 'CustCred']);
     $second = sourceCreditMemo(['id' => '1348', 'currency_id' => '2']);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo(), $second]))
         ->push(sourcePage([sourceCreditMemoLine(), sourceCreditMemoLine(['transaction_id' => '1348'])]))
         ->push(sourcePage([sourceCreditMemo(), $second]))
         ->push(sourcePage([creditMemoHeaderTotals(), creditMemoHeaderTotals(['currency_id' => '2'])]))
-        ->push(sourcePage([creditMemoLineTotals(), creditMemoLineTotals(['currency_id' => '2'])]))]);
+        ->push(sourcePage([creditMemoLineTotals(), creditMemoLineTotals(['currency_id' => '2'])])))]);
 
     $result = app(SyncCreditMemos::class)->handle(16);
 
     expect($result['creditMemos'])->toBe(2);
     expect($result['lines'])->toBe(2);
-    expect($result['reconciliation'])->toHaveCount(26);
+    expect($result['reconciliation'])->toHaveCount(32);
     expect(collect($result['reconciliation'])->every('matches'))->toBeTrue();
     expect($company->refresh()->credit_memos_synced_at)->not->toBeNull();
     expect($company->sales_orders_synced_at)->toBeNull();
-    Http::assertSentCount(6);
+    Http::assertSentCount(9);
 });
 
 it('refreshes unchanged modification timestamps and payment snapshots without duplicating creditMemos', function () {
@@ -74,9 +74,9 @@ it('refreshes unchanged modification timestamps and payment snapshots without du
     $existing = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustCred',
         'netsuite_updated_at' => '2026-09-01 12:00:00', 'foreign_amount_paid' => '0', 'foreign_amount_unpaid' => '25.12345678']);
     TransactionLine::factory()->for($existing)->create(['netsuite_line_id' => 9]);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([sourceCreditMemoLine()]))
-        ->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([creditMemoHeaderTotals()]))->push(sourcePage([creditMemoLineTotals()]))]);
+        ->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([creditMemoHeaderTotals()]))->push(sourcePage([creditMemoLineTotals()])))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertSuccessful();
 
@@ -84,14 +84,14 @@ it('refreshes unchanged modification timestamps and payment snapshots without du
     $this->assertDatabaseCount('transaction_lines', 1);
     expect($existing->refresh()->foreign_amount_paid)->toBe('20.00000000');
     expect($existing->lines()->sole()->netsuite_line_id)->toBe(1);
-    Http::assertSentCount(6);
+    Http::assertSentCount(9);
 });
 
 it('preserves last success when reconciliation fails', function (array $header, array $lines) {
     $company = Company::factory()->create(['netsuite_id' => 16, 'credit_memos_synced_at' => '2026-09-01 12:00:00']);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([sourceCreditMemoLine()]))
-        ->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([creditMemoHeaderTotals($header)]))->push(sourcePage([creditMemoLineTotals($lines)]))]);
+        ->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([creditMemoHeaderTotals($header)]))->push(sourcePage([creditMemoLineTotals($lines)])))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
 
@@ -99,7 +99,7 @@ it('preserves last success when reconciliation fails', function (array $header, 
     expect($company->credit_memos_sync_error)->not->toBeNull();
     expect($company->credit_memos_backfilled_at)->toBeNull();
     expect(Cache::lock('netsuite-credit-memos:16', 600)->get())->toBeTrue();
-    Http::assertSentCount(6);
+    Http::assertSentCount(9);
 })->with([
     'payment changed' => [['foreign_amount_unpaid' => '0'], []],
     'null count differs' => [['paid_count' => '0'], []],
@@ -109,8 +109,8 @@ it('preserves last success when reconciliation fails', function (array $header, 
 it('keeps missing source creditMemos and rejects a false successful sync', function () {
     $company = Company::factory()->create(['netsuite_id' => 16]);
     $missing = Transaction::factory()->for($company)->create(['type' => 'CustCred']);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
-        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))]);
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([])))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
 
@@ -120,22 +120,22 @@ it('keeps missing source creditMemos and rejects a false successful sync', funct
 
 it('records a reconciled empty history only after validating the customer', function () {
     $company = Company::factory()->create(['netsuite_id' => 16]);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
-        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([]))]);
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([])))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertSuccessful();
 
     expect($company->refresh()->credit_memos_synced_at)->not->toBeNull();
-    Http::assertSentCount(4);
+    Http::assertSentCount(5);
 });
 
 it('does not replace old lines when a batch line page fails', function () {
     $company = Company::factory()->create(['netsuite_id' => 16]);
     $creditMemo = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustCred']);
     $line = TransactionLine::factory()->for($creditMemo)->create();
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))
-        ->push(sourcePage([sourceCreditMemoLine()], true))->push([], 503)]);
+        ->push(sourcePage([sourceCreditMemoLine()], true))->push([], 503))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
 
@@ -146,9 +146,9 @@ it('does not replace old lines when a batch line page fails', function () {
 
 it('rejects changed or missing verification headers before saving a batch', function (array $verification) {
     Company::factory()->create(['netsuite_id' => 16]);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([sourceCreditMemoLine()]))
-        ->push(sourcePage($verification))]);
+        ->push(sourcePage($verification)))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
 
@@ -157,8 +157,8 @@ it('rejects changed or missing verification headers before saving a batch', func
 
 it('paginates customer creditMemos and refuses duplicate header pages', function (bool $duplicate) {
     $second = sourceCreditMemo(['id' => $duplicate ? '1347' : '1348']);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
-        ->push(sourcePage([sourceCreditMemo()], true))->push(sourcePage([$second]))]);
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
+        ->push(sourcePage([sourceCreditMemo()], true))->push(sourcePage([$second])))]);
 
     if ($duplicate) {
         expect(fn () => iterator_to_array(app(CreditMemoSource::class)->creditMemos(16)))->toThrow(RuntimeException::class);
@@ -170,9 +170,9 @@ it('paginates customer creditMemos and refuses duplicate header pages', function
 
 it('rejects truncated reconciliation totals', function () {
     $company = Company::factory()->create(['netsuite_id' => 16]);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))
-        ->push(sourcePage([creditMemoHeaderTotals()], true))->push(sourcePage([]))]);
+        ->push(sourcePage([creditMemoHeaderTotals()], true))->push(sourcePage([])))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
 
@@ -193,9 +193,9 @@ it('keeps completed batches but leaves freshness unchanged when a later page fai
     $company = Company::factory()->create(['netsuite_id' => 16, 'credit_memos_synced_at' => '2026-09-01 12:00:00']);
     $creditMemos = array_map(fn (int $id): array => sourceCreditMemo(['id' => (string) $id]), range(1347, 1396));
     $lines = array_map(fn (int $id): array => sourceCreditMemoLine(['transaction_id' => (string) $id]), range(1347, 1396));
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage($creditMemos, true))
-        ->push(sourcePage($lines))->push(sourcePage($creditMemos))->push([], 503)]);
+        ->push(sourcePage($lines))->push(sourcePage($creditMemos))->push([], 503))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
 
@@ -204,17 +204,17 @@ it('keeps completed batches but leaves freshness unchanged when a later page fai
     expect($company->refresh()->credit_memos_synced_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 12:00:00');
     expect($company->credit_memos_sync_error)->not->toBeNull();
     expect($company->credit_memos_backfilled_at)->toBeNull();
-    Http::assertSentCount(5);
+    Http::assertSentCount(7);
 });
 
 it('reconciles unknown paid amounts without treating null as a known zero', function () {
     Company::factory()->create(['netsuite_id' => 16]);
     $creditMemo = sourceCreditMemo(['foreign_amount_paid' => null, 'foreign_amount_unpaid' => null]);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([$creditMemo]))->push(sourcePage([sourceCreditMemoLine()]))
         ->push(sourcePage([$creditMemo]))
         ->push(sourcePage([creditMemoHeaderTotals(['paid_count' => '0', 'unpaid_count' => '0', 'foreign_amount_paid' => '0', 'foreign_amount_unpaid' => '0'])]))
-        ->push(sourcePage([creditMemoLineTotals()]))]);
+        ->push(sourcePage([creditMemoLineTotals()])))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertSuccessful();
 
@@ -230,10 +230,10 @@ it('rejects invalid or unregistered customers without contacting NetSuite', func
 it('preserves a non-item credit and its signed amount without inventing a quantity', function () {
     Company::factory()->create(['netsuite_id' => 16]);
     $line = sourceCreditMemoLine(['item_id' => null, 'item_number' => null, 'quantity' => null, 'source_transaction_id' => null]);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([$line]))
         ->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([creditMemoHeaderTotals()]))
-        ->push(sourcePage([creditMemoLineTotals(['quantity_count' => '0', 'quantity' => '0'])]))]);
+        ->push(sourcePage([creditMemoLineTotals(['quantity_count' => '0', 'quantity' => '0'])])))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertSuccessful();
 
@@ -246,9 +246,9 @@ it('refuses to overwrite another customer or transaction type', function (bool $
     $existing = Transaction::factory()->create(['netsuite_id' => 1347,
         'company_id' => $otherCustomer ? Company::factory()->create()->id : $company->id,
         'type' => $otherCustomer ? 'CustCred' : 'CustInvc']);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))
-        ->push(sourcePage([sourceCreditMemoLine()]))->push(sourcePage([sourceCreditMemo()]))]);
+        ->push(sourcePage([sourceCreditMemoLine()]))->push(sourcePage([sourceCreditMemo()])))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
 
@@ -259,9 +259,9 @@ it('refuses to overwrite another customer or transaction type', function (bool $
 
 it('rejects foreign source headers and lines before saving credit memos', function (array $header, array $line) {
     Company::factory()->create(['netsuite_id' => 16]);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo($header)]))
-        ->push(sourcePage([sourceCreditMemoLine($line)]))]);
+        ->push(sourcePage([sourceCreditMemoLine($line)])))]);
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
 

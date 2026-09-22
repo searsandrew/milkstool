@@ -11,13 +11,13 @@ beforeEach(function () {
 it('marks a reconciled customer complete and skips it on subsequent runs', function () {
     $company = Company::factory()->create(['netsuite_id' => 16]);
     Company::factory()->create(['netsuite_id' => 17, 'is_active' => false]);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
-        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([]))]);
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([])))]);
 
     $this->artisan('milkstool:backfill-credit-memos', ['--limit' => '1'])->assertSuccessful();
     expect($company->refresh()->credit_memos_backfilled_at)->not->toBeNull();
     $this->artisan('milkstool:backfill-credit-memos')->expectsOutput('Backfill complete: 0 customers imported and reconciled.')->assertSuccessful();
-    Http::assertSentCount(4);
+    Http::assertSentCount(5);
 });
 
 it('stops before the next customer when import fails and leaves the failed customer resumable', function () {

@@ -48,7 +48,8 @@ class CustomerTransactionController extends Controller
     {
         $document = $customer->transactions()->where('netsuite_id', $transaction)
             ->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred', 'CustPymt'])
-            ->with(['paymentApplications' => fn ($query) => $query->where('target_customer_id', $customer->netsuite_id)
+            ->with(['creditMemoApplications' => fn ($query) => $query->where('target_customer_id', $customer->netsuite_id)
+                ->orderBy('credit_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'paymentApplications' => fn ($query) => $query->where('target_customer_id', $customer->netsuite_id)
                 ->orderBy('payment_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'lines' => fn ($query) => $query->orderBy('netsuite_line_id')])->firstOrFail();
 
         return (new TransactionResource($document))->additional(['sync' => new CustomerSyncResource($customer)]);

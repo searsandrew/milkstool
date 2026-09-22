@@ -37,9 +37,9 @@ function paymentLine(): array
 function paymentApplications(): array
 {
     return [
-        ['payment_id' => '1517', 'payment_line_id' => '1', 'target_netsuite_id' => '1347', 'target_line_id' => '0',
+        ['source_id' => '1517', 'source_line_id' => '1', 'target_netsuite_id' => '1347', 'target_line_id' => '0',
             'target_customer_id' => '16', 'target_currency_id' => '1', 'target_type' => 'CustInvc', 'foreign_amount' => '60'],
-        ['payment_id' => '1517', 'payment_line_id' => '1', 'target_netsuite_id' => '1489', 'target_line_id' => '0',
+        ['source_id' => '1517', 'source_line_id' => '1', 'target_netsuite_id' => '1489', 'target_line_id' => '0',
             'target_customer_id' => '16', 'target_currency_id' => '1', 'target_type' => 'CustInvc', 'foreign_amount' => '40'],
     ];
 }
@@ -134,7 +134,7 @@ it('retains source relationships to other customers without moving transaction o
 
 it('rejects application rows belonging to another payment', function () {
     Http::fake(['https://netsuite.example/*' => Http::response(sourcePage([
-        array_replace(paymentApplications()[0], ['payment_id' => '999']),
+        array_replace(paymentApplications()[0], ['source_id' => '999']),
     ]))]);
     expect(fn () => app(PaymentApplicationSource::class)->forPayments(16, [1517]))->toThrow(ValidationException::class);
 });

@@ -53,8 +53,8 @@ it('lists due customers without enqueueing in dry run mode', function () {
 });
 
 it('runs a serialized queued refresh and makes the customer no longer due', function () {
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
-        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([]))]);
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([])))]);
     RefreshCreditMemos::dispatch(16);
 
     $queued = Queue::connection('netsuite')->pop('credit-memos');
@@ -66,7 +66,7 @@ it('runs a serialized queued refresh and makes the customer no longer due', func
     expect(Company::query()->sole()->credit_memos_next_sync_at->format('Y-m-d H:i:s'))->toBe('2026-09-16 18:00:00');
     $this->artisan('milkstool:dispatch-credit-memo-refreshes', ['--dry-run' => true])
         ->expectsOutput('0 customers due. No jobs queued.')->assertSuccessful();
-    Http::assertSentCount(4);
+    Http::assertSentCount(5);
 });
 
 it('allows the queue to retry transient NetSuite failures', function (int $status) {
