@@ -12,7 +12,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 class SyncStatus extends Command
 {
     protected $signature = 'milkstool:sync-status
-        {--type=sales-orders : sales-orders, invoices, credit-memos, or payments}
+        {--type=sales-orders : sales-orders, invoices, credit-memos, payments, or balances}
         {--customer= : NetSuite internal ID, including inactive customers}
         {--attention : Show only active customers with unfinished backfills or refreshes needing attention}
         {--include-inactive : Include inactive customers in the list}
@@ -27,14 +27,19 @@ class SyncStatus extends Command
             'invoices' => ['invoices', 'CustInvc', 'invoice_count', 'Invoices'],
             'credit-memos' => ['credit_memos', 'CustCred', 'credit_memo_count', 'Credit memos'],
             'payments' => ['payments', 'CustPymt', 'payment_count', 'Payments'],
+            'balances' => ['balance', null, 'snapshot_count', 'Snapshots'],
         ];
         $type = $this->option('type');
         if (! isset($types[$type])) {
-            $this->error('Type must be sales-orders, invoices, credit-memos, or payments.');
+            $this->error('Type must be sales-orders, invoices, credit-memos, payments, or balances.');
 
             return self::FAILURE;
         }
         [$prefix, $sourceType, $countKey, $label] = $types[$type];
+        $isBalance = $type === 'balances';
+        $completionKey = $isBalance ? 'snapshot_synced_at' : 'backfilled_at';
+        $summaryCompletionKey = $isBalance ? 'snapshots' : 'backfilled';
+        $totalKey = $isBalance ? 'stored_snapshots' : $prefix;
         $customerId = null;
 
         if ($this->option('customer') !== null) {
@@ -50,7 +55,9 @@ class SyncStatus extends Command
         $now = now()->toImmutable();
         $fields = ['id', 'netsuite_id', 'name', 'account_number', 'is_active', 'portal_last_active_at'];
         foreach (['sync_started_at', 'synced_at', 'backfilled_at', 'next_sync_at', 'sync_error'] as $field) {
-            $fields[] = $prefix.'_'.$field;
+            if (! $isBalance || $field !== 'backfilled_at') {
+                $fields[] = $prefix.'_'.$field;
+            }
         }
         if ($type === 'sales-orders') {
             $fields = [...$fields, 'sales_orders_checkpoint_at', 'sales_orders_full_synced_at'];
@@ -58,7 +65,8 @@ class SyncStatus extends Command
         $companies = Company::query()->select($fields)
             ->when($customerId !== null, fn (Builder $query) => $query->where('netsuite_id', $customerId))
             ->when($customerId === null && ! $this->option('include-inactive'), fn (Builder $query) => $query->where('is_active', true))
-            ->withCount(['transactions as '.$countKey => fn (Builder $query) => $query->where('type', $sourceType)])
+            ->when($isBalance, fn (Builder $query) => $query->selectRaw('CASE WHEN account_balance_snapshot IS NULL THEN 0 ELSE 1 END AS snapshot_count'),
+                fn (Builder $query) => $query->withCount(['transactions as '.$countKey => fn (Builder $query) => $query->where('type', $sourceType)]))
             ->orderBy('netsuite_id')->get();
 
         if ($customerId !== null && $companies->isEmpty()) {
@@ -67,7 +75,10 @@ class SyncStatus extends Command
             return self::FAILURE;
         }
 
-        $rows = $companies->map(function (Company $company) use ($now, $prefix, $countKey): array {
+        $rows = $companies->map(function (Company $company) use ($now, $prefix, $countKey, $isBalance, $completionKey): array {
+            $completedAt = $isBalance
+                ? ($company->snapshot_count ? $company->balance_synced_at : null)
+                : $company->{$prefix.'_backfilled_at'};
             $unfinished = $company->{$prefix.'_sync_started_at'} !== null
                 && ($company->{$prefix.'_synced_at'} === null || $company->{$prefix.'_sync_started_at'}->gt($company->{$prefix.'_synced_at'}));
             $due = $company->refreshDueAt($prefix)?->lte($now) ?? true;
@@ -86,12 +97,12 @@ class SyncStatus extends Command
                 'name' => $company->name,
                 'active' => $company->is_active,
                 'status' => $status,
-                'needs_attention' => $company->is_active && ($status !== 'current' || $company->{$prefix.'_backfilled_at'} === null),
+                'needs_attention' => $company->is_active && ($status !== 'current' || $completedAt === null),
                 $countKey => (int) $company->{$countKey},
                 'last_attempt_at' => $this->timestamp($company->{$prefix.'_sync_started_at'}),
                 'last_success_at' => $this->timestamp($company->{$prefix.'_synced_at'}),
                 'source_checkpoint_at' => $prefix === 'sales_orders' ? $this->timestamp($company->sales_orders_checkpoint_at) : null,
-                'backfilled_at' => $this->timestamp($company->{$prefix.'_backfilled_at'}),
+                $completionKey => $this->timestamp($completedAt),
                 'last_full_sync_at' => $this->timestamp($prefix === 'sales_orders' ? $company->sales_orders_full_synced_at : $company->{$prefix.'_synced_at'}),
                 'next_sync_at' => $this->timestamp($company->refreshDueAt($prefix)),
                 'error' => $company->{$prefix.'_sync_error'},
@@ -104,9 +115,9 @@ class SyncStatus extends Command
             'scheduled_sync_enabled' => (bool) config('netsuite-sync.scheduled'),
             'summary' => [
                 'customers' => $rows->count(),
-                'backfilled' => $rows->whereNotNull('backfilled_at')->count(),
+                $summaryCompletionKey => $rows->whereNotNull($completionKey)->count(),
                 'needs_attention' => $rows->where('needs_attention', true)->count(),
-                $prefix => $rows->sum($countKey),
+                $totalKey => $rows->sum($countKey),
                 'by_status' => array_replace(array_fill_keys(['current', 'due', 'failed', 'never_synced', 'unfinished_attempt', 'inactive'], 0), $rows->countBy('status')->all()),
             ],
             'queue_scope' => 'global',
@@ -122,13 +133,14 @@ class SyncStatus extends Command
         }
 
         $summary = $report['summary'];
+        $completionLabel = $isBalance ? 'Snapshot synced' : 'Backfilled';
         $summaryLabel = $type === 'sales-orders' ? 'sales orders' : strtolower($label);
         $this->line('Scheduled sync configuration: '.($report['scheduled_sync_enabled'] ? 'enabled' : 'disabled'));
-        $this->line("Matching customers: {$summary['customers']}; backfilled: {$summary['backfilled']}; need attention: {$summary['needs_attention']}; {$summaryLabel}: {$summary[$prefix]}.");
-        $this->table(['NetSuite ID', 'Account', 'Customer', 'Status', $label, 'Backfilled', 'Last success (UTC)', 'Next sync (UTC)'],
+        $this->line("Matching customers: {$summary['customers']}; {$summaryCompletionKey}: {$summary[$summaryCompletionKey]}; need attention: {$summary['needs_attention']}; {$summaryLabel}: {$summary[$totalKey]}.");
+        $this->table(['NetSuite ID', 'Account', 'Customer', 'Status', $label, $completionLabel, 'Last success (UTC)', 'Next sync (UTC)'],
             $rows->map(fn (array $row): array => [
                 $row['netsuite_id'], $row['account_number'] ?? '-', $row['name'], $row['status'], $row[$countKey],
-                $row['backfilled_at'] === null ? 'No' : 'Yes', $row['last_success_at'] ?? '-', $row['next_sync_at'] ?? '-',
+                $row[$completionKey] === null ? 'No' : 'Yes', $row['last_success_at'] ?? '-', $row['next_sync_at'] ?? '-',
             ])->all());
         $this->table(['Queue (global)', 'Ready', 'Delayed', 'Reserved', 'Expired reservations', 'Failed'],
             array_map(fn (array $queue): array => array_map(fn ($value) => $value ?? 'Unavailable', $queue), $report['queues']));
@@ -141,12 +153,12 @@ class SyncStatus extends Command
             $row = $rows->first();
             $this->line('Source checkpoint (UTC): '.($row['source_checkpoint_at'] ?? '-'));
             $this->line('Last full scan (UTC): '.($row['last_full_sync_at'] ?? '-'));
-            $this->line('Backfill reconciled (UTC): '.($row['backfilled_at'] ?? '-'));
+            $this->line(($isBalance ? 'Snapshot synced (UTC): ' : 'Backfill reconciled (UTC): ').($row[$completionKey] ?? '-'));
             $this->line('Last attempt (UTC): '.($row['last_attempt_at'] ?? '-'));
         }
 
         $this->line('Unfinished attempts may be running or interrupted. Reservations and configuration do not establish worker/scheduler liveness.');
-        $this->line('Refresh one customer: php artisan milkstool:sync-'.$type.' <ID> --queue');
+        $this->line('Refresh one customer: php artisan milkstool:sync-'.($isBalance ? 'balance' : $type).' <ID> --queue');
         $this->line('Inspect failed jobs: php artisan queue:failed');
 
         return self::SUCCESS;

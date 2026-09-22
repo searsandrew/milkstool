@@ -169,3 +169,29 @@ it('rejects unsupported status types', function () {
     $this->artisan('milkstool:sync-status', ['--type' => 'unknown'])->assertFailed();
     Http::assertNothingSent();
 });
+
+it('reports balance snapshot coverage and freshness without exposing or summing financial amounts', function () {
+    $this->freezeSecond();
+    Company::factory()->create(['netsuite_id' => 16, 'balance_synced_at' => now(), 'account_balance_snapshot' => ['balance' => '123456.12345678']]);
+    Company::factory()->create(['netsuite_id' => 17]);
+    Company::factory()->create(['netsuite_id' => 18, 'balance_synced_at' => now()->subDay(), 'account_balance_snapshot' => ['balance' => '0.00000000']]);
+    Company::factory()->create(['netsuite_id' => 19, 'balance_sync_started_at' => now()]);
+    Company::factory()->create(['netsuite_id' => 20, 'balance_sync_error' => 'Balance refresh failed.']);
+    Company::factory()->create(['netsuite_id' => 21, 'balance_synced_at' => now()]);
+
+    $report = syncStatusReport(['--type' => 'balances']);
+
+    expect($report['summary'])->toMatchArray(['customers' => 6, 'snapshots' => 2, 'needs_attention' => 5]);
+    expect(array_column($report['customers'], 'status', 'netsuite_id'))->toBe([
+        16 => 'current', 17 => 'never_synced', 18 => 'due', 19 => 'unfinished_attempt', 20 => 'failed', 21 => 'current',
+    ]);
+    expect($report['customers'][0])->toMatchArray(['snapshot_count' => 1, 'needs_attention' => false]);
+    expect($report['customers'][0]['snapshot_synced_at'])->toBe($report['customers'][0]['last_success_at']);
+    expect($report['customers'][5])->toMatchArray(['snapshot_count' => 0, 'needs_attention' => true, 'snapshot_synced_at' => null]);
+    expect($report['customers'][0])->not->toHaveKey('backfilled_at');
+    expect(Artisan::output())->not->toContain('123456.12345678', 'account_balance_snapshot');
+    expect(array_column(syncStatusReport(['--type' => 'balances', '--attention' => true])['customers'], 'netsuite_id'))->toBe([17, 18, 19, 20, 21]);
+    $this->artisan('milkstool:sync-status', ['--type' => 'balances', '--customer' => 16])
+        ->expectsOutput('Refresh one customer: php artisan milkstool:sync-balance <ID> --queue')->assertSuccessful();
+    Http::assertNothingSent();
+});
