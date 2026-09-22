@@ -74,9 +74,20 @@ class SalesOrderSource
     /** @return array<string, mixed> */
     public function order(int $customerId, int $orderId): array
     {
+        return $this->findOrder($customerId, $orderId)
+            ?? throw new RuntimeException('The sales order disappeared or moved while it was being imported. Retry the sync.');
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findOrder(int $customerId, int $orderId): ?array
+    {
         $this->assertPositiveId($customerId);
         $this->assertPositiveId($orderId);
         $page = $this->client->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'SalesOrd' AND id = {$orderId}");
+
+        if ($page['items'] === [] && ! $page['hasMore']) {
+            return null;
+        }
 
         if (count($page['items']) !== 1 || $page['hasMore'] || (int) ($page['items'][0]['id'] ?? 0) !== $orderId) {
             throw new RuntimeException('The sales order disappeared or moved while it was being imported. Retry the sync.');

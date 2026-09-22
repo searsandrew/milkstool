@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\CustomerActivityController;
 use App\Http\Controllers\Api\V1\CustomerBalanceController;
 use App\Http\Controllers\Api\V1\CustomerInvoiceSummaryController;
+use App\Http\Controllers\Api\V1\CustomerOrderRefreshController;
 use App\Http\Controllers\Api\V1\CustomerTransactionController;
 use App\Http\Controllers\Api\V1\StatusController;
 use App\Http\Middleware\AuthorizeCustomerRead;
@@ -29,3 +30,8 @@ Route::post('v1/customers/{customer:netsuite_id}/activity', CustomerActivityCont
     ->whereNumber('customer')
     ->middleware(['auth:sanctum', 'abilities:activity:write', AuthorizeCustomerRead::class, 'throttle:30,1'])
     ->name('api.v1.customers.activity');
+
+Route::post('v1/customers/{customer:netsuite_id}/order-refreshes', CustomerOrderRefreshController::class)
+    ->whereNumber('customer')
+    ->middleware(['auth:sanctum', 'abilities:orders:refresh', AuthorizeCustomerRead::class, 'throttle:10,1'])
+    ->name('api.v1.customers.order-refreshes');

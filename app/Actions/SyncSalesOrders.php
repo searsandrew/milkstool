@@ -135,6 +135,34 @@ class SyncSalesOrders
         }
     }
 
+    public function syncOrder(int $customerId, int $orderId): ?Transaction
+    {
+        $company = Company::query()->where('netsuite_id', $customerId)->where('is_active', true)->firstOrFail();
+        $lock = Cache::lock('netsuite-sales-orders:'.$customerId, 600);
+        if (! $lock->get()) {
+            throw new SalesOrderSyncInterrupted('A sales-order sync is already running for this customer.');
+        }
+        try {
+            $order = $this->source->findOrder($customerId, $orderId);
+            if ($order === null) {
+                return null;
+            }
+            $lines = $this->source->lines($customerId, $orderId);
+            $verified = $this->source->findOrder($customerId, $orderId);
+            if ($order != $verified) {
+                throw new SalesOrderSyncInterrupted('The submitted order changed during retrieval.');
+            }
+            if (! $lock->isOwnedByCurrentProcess()) {
+                throw new SalesOrderSyncInterrupted('The sales-order sync lock expired.');
+            }
+            $this->storeOrder($company, $order, $lines);
+
+            return $company->transactions()->where('netsuite_id', $orderId)->firstOrFail();
+        } finally {
+            $lock->release();
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $order
      * @param  list<array<string, mixed>>  $lines
@@ -144,8 +172,8 @@ class SyncSalesOrders
         DB::transaction(function () use ($company, $order, $lines): void {
             $transaction = Transaction::query()->firstOrNew(['netsuite_id' => $order['id']]);
 
-            if ($transaction->exists && $transaction->company_id !== $company->id) {
-                throw new RuntimeException('The sales order is already associated with another customer; reconciliation is required.');
+            if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'SalesOrd')) {
+                throw new RuntimeException('The sales order is already associated with another customer or transaction type; reconciliation is required.');
             }
 
             $transaction->fill([
