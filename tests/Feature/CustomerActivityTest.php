@@ -3,6 +3,7 @@
 use App\Jobs\RefreshCreditMemos;
 use App\Jobs\RefreshCustomerBalance;
 use App\Jobs\RefreshInvoices;
+use App\Jobs\RefreshPayments;
 use App\Jobs\RefreshSalesOrders;
 use App\Models\ApiClient;
 use App\Models\Company;
@@ -30,10 +31,10 @@ it('requires a customer grant and explicit activity permission', function () {
 it('records a visit and queues each missing history once without contacting NetSuite', function () {
     Sanctum::actingAs(ApiClient::factory()->create(), ['activity:write', 'customer:16']);
     $this->postJson('/api/v1/customers/16/activity')->assertAccepted()
-        ->assertJsonPath('data.refreshes_requested', ['balance', 'sales_orders', 'invoices', 'credit_memos'])
+        ->assertJsonPath('data.refreshes_requested', ['balance', 'sales_orders', 'invoices', 'credit_memos', 'payments'])
         ->assertJsonPath('data.active_until', now()->addDay()->toIso8601String());
     $this->postJson('/api/v1/customers/16/activity')->assertAccepted();
-    $this->assertDatabaseCount('jobs', 4);
+    $this->assertDatabaseCount('jobs', 5);
     expect($this->company->refresh()->portal_last_active_at->eq(now()))->toBeTrue();
     Http::assertNothingSent();
 });
@@ -41,7 +42,7 @@ it('records a visit and queues each missing history once without contacting NetS
 it('does not queue fresh data and preserves the failure cooldown', function () {
     Queue::fake();
     Sanctum::actingAs(ApiClient::factory()->create(), ['activity:write', 'customer:16']);
-    foreach (['balance', 'sales_orders', 'invoices', 'credit_memos'] as $prefix) {
+    foreach (['balance', 'sales_orders', 'invoices', 'credit_memos', 'payments'] as $prefix) {
         $this->company->forceFill([$prefix.'_synced_at' => now()->subMinutes(5), $prefix.'_next_sync_at' => now()->addHours(6)])->save();
     }
     $this->company->forceFill(['invoices_synced_at' => now()->subDay(), 'invoices_sync_error' => 'Retry later'])->save();
@@ -53,11 +54,11 @@ it('does not queue fresh data and preserves the failure cooldown', function () {
 it('starts a refresh when a returning visitor has data older than fifteen minutes', function () {
     Queue::fake();
     Sanctum::actingAs(ApiClient::factory()->create(), ['activity:write', 'customer:16']);
-    foreach (['balance', 'sales_orders', 'invoices', 'credit_memos'] as $prefix) {
+    foreach (['balance', 'sales_orders', 'invoices', 'credit_memos', 'payments'] as $prefix) {
         $this->company->forceFill([$prefix.'_synced_at' => now()->subMinutes(16), $prefix.'_next_sync_at' => now()->addHours(5)])->save();
     }
     $this->postJson('/api/v1/customers/16/activity')->assertAccepted();
-    foreach ([RefreshCustomerBalance::class, RefreshSalesOrders::class, RefreshInvoices::class, RefreshCreditMemos::class] as $job) {
+    foreach ([RefreshCustomerBalance::class, RefreshSalesOrders::class, RefreshInvoices::class, RefreshCreditMemos::class, RefreshPayments::class] as $job) {
         Queue::assertPushed($job, 1);
     }
     Http::assertNothingSent();
@@ -80,6 +81,7 @@ it('keeps recent visitors due while excluding expired activity and failed cooldo
     ['milkstool:dispatch-invoice-refreshes', 'invoices', RefreshInvoices::class],
     ['milkstool:dispatch-credit-memo-refreshes', 'credit_memos', RefreshCreditMemos::class],
     ['milkstool:dispatch-balance-refreshes', 'balance', RefreshCustomerBalance::class],
+    ['milkstool:dispatch-payment-refreshes', 'payments', RefreshPayments::class],
 ]);
 
 it('sets the next successful balance refresh according to recent activity', function (int $hoursAgo, int $minutesUntilRefresh) {

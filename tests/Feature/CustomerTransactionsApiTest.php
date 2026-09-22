@@ -69,7 +69,7 @@ it('filters open invoices using source unpaid amounts and date bounds', function
 it('rejects invalid or contradictory filters', function (string $query) {
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
     $this->getJson('/api/v1/customers/16/transactions?'.$query)->assertUnprocessable();
-})->with(['per_page=101', 'page=0', 'type=CustPymt', 'outstanding=abc', 'outstanding=1&type=CustCred', 'from=2026-02-01&to=2026-01-01', 'from=not-a-date']);
+})->with(['per_page=101', 'page=0', 'type=Unknown', 'outstanding=abc', 'outstanding=1&type=CustCred', 'from=2026-02-01&to=2026-01-01', 'from=not-a-date']);
 
 it('groups known invoice outstanding amounts by currency without counting credits or unknowns as known zero', function () {
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);

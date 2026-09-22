@@ -37,6 +37,12 @@ class Transaction extends Model
         return $this->belongsTo(Company::class);
     }
 
+    /** @return HasMany<PaymentApplication, $this> */
+    public function paymentApplications(): HasMany
+    {
+        return $this->hasMany(PaymentApplication::class);
+    }
+
     /** @return HasMany<TransactionLine, $this> */
     public function lines(): HasMany
     {

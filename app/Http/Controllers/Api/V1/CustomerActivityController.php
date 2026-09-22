@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\RefreshCreditMemos;
 use App\Jobs\RefreshCustomerBalance;
 use App\Jobs\RefreshInvoices;
+use App\Jobs\RefreshPayments;
 use App\Jobs\RefreshSalesOrders;
 use App\Models\Company;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +19,7 @@ class CustomerActivityController extends Controller
         $customer->forceFill(['portal_last_active_at' => now()])->save();
         $requested = [];
         foreach (['balance' => RefreshCustomerBalance::class, 'sales_orders' => RefreshSalesOrders::class,
-            'invoices' => RefreshInvoices::class, 'credit_memos' => RefreshCreditMemos::class] as $prefix => $job) {
+            'invoices' => RefreshInvoices::class, 'credit_memos' => RefreshCreditMemos::class, 'payments' => RefreshPayments::class] as $prefix => $job) {
             if (Company::query()->whereKey($customer->id)->dueForRefresh($prefix)->exists()) {
                 $job::dispatch((int) $customer->netsuite_id);
                 $requested[] = $prefix;

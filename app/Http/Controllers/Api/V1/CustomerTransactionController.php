@@ -15,7 +15,7 @@ class CustomerTransactionController extends Controller
     public function index(Request $request, Company $customer): AnonymousResourceCollection
     {
         $filters = $request->validate([
-            'type' => ['sometimes', 'in:SalesOrd,CustInvc,CustCred'],
+            'type' => ['sometimes', 'in:SalesOrd,CustInvc,CustCred,CustPymt'],
             'outstanding' => ['sometimes', 'boolean'],
             'from' => ['sometimes', 'date_format:Y-m-d'],
             'to' => ['sometimes', 'date_format:Y-m-d', ...($request->has('from') ? ['after_or_equal:from'] : [])],
@@ -25,7 +25,7 @@ class CustomerTransactionController extends Controller
         if ($request->boolean('outstanding') && isset($filters['type']) && $filters['type'] !== 'CustInvc') {
             throw ValidationException::withMessages(['outstanding' => 'Outstanding amounts are available for invoices only.']);
         }
-        $query = $customer->transactions()->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred']);
+        $query = $customer->transactions()->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred', 'CustPymt']);
         if (isset($filters['type'])) {
             $query->where('type', $filters['type']);
         }
@@ -47,8 +47,9 @@ class CustomerTransactionController extends Controller
     public function show(Company $customer, string $transaction): TransactionResource
     {
         $document = $customer->transactions()->where('netsuite_id', $transaction)
-            ->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred'])
-            ->with(['lines' => fn ($query) => $query->orderBy('netsuite_line_id')])->firstOrFail();
+            ->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred', 'CustPymt'])
+            ->with(['paymentApplications' => fn ($query) => $query->where('target_customer_id', $customer->netsuite_id)
+                ->orderBy('payment_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'lines' => fn ($query) => $query->orderBy('netsuite_line_id')])->firstOrFail();
 
         return (new TransactionResource($document))->additional(['sync' => new CustomerSyncResource($customer)]);
     }

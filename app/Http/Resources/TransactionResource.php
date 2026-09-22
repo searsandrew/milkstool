@@ -24,6 +24,8 @@ class TransactionResource extends JsonResource
             'foreign_amount_paid' => $this->foreign_amount_paid,
             'foreign_amount_unpaid' => $this->foreign_amount_unpaid,
             'synced_at' => $this->synced_at?->utc()->toIso8601String(),
+            'payment_applications' => PaymentApplicationResource::collection($this->whenLoaded('paymentApplications')),
+            'payment_applications_scope' => $this->when($this->type === 'CustPymt', 'same_customer'),
             'lines' => TransactionLineResource::collection($this->whenLoaded('lines')),
         ];
     }

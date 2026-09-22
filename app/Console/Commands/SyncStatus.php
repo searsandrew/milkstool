@@ -12,7 +12,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 class SyncStatus extends Command
 {
     protected $signature = 'milkstool:sync-status
-        {--type=sales-orders : sales-orders, invoices, or credit-memos}
+        {--type=sales-orders : sales-orders, invoices, credit-memos, or payments}
         {--customer= : NetSuite internal ID, including inactive customers}
         {--attention : Show only active customers with unfinished backfills or refreshes needing attention}
         {--include-inactive : Include inactive customers in the list}
@@ -26,10 +26,11 @@ class SyncStatus extends Command
             'sales-orders' => ['sales_orders', 'SalesOrd', 'sales_order_count', 'Orders'],
             'invoices' => ['invoices', 'CustInvc', 'invoice_count', 'Invoices'],
             'credit-memos' => ['credit_memos', 'CustCred', 'credit_memo_count', 'Credit memos'],
+            'payments' => ['payments', 'CustPymt', 'payment_count', 'Payments'],
         ];
         $type = $this->option('type');
         if (! isset($types[$type])) {
-            $this->error('Type must be sales-orders, invoices, or credit-memos.');
+            $this->error('Type must be sales-orders, invoices, credit-memos, or payments.');
 
             return self::FAILURE;
         }
@@ -161,7 +162,7 @@ class SyncStatus extends Command
     {
         $rows = [];
 
-        foreach (['customers', 'sales-orders', 'invoices', 'credit-memos', 'balances'] as $name) {
+        foreach (['customers', 'sales-orders', 'invoices', 'credit-memos', 'balances', 'payments'] as $name) {
             $row = ['name' => $name, 'ready' => null, 'delayed' => null, 'reserved' => null, 'expired_reservations' => null, 'failed' => null];
 
             if (config('queue.connections.netsuite.driver') === 'database') {

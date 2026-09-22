@@ -11,7 +11,7 @@ class CustomerSyncResource extends JsonResource
     public function toArray(Request $request): array
     {
         $result = [];
-        foreach (['sales_orders', 'invoices', 'credit_memos'] as $prefix) {
+        foreach (['sales_orders', 'invoices', 'credit_memos', 'payments'] as $prefix) {
             $success = $this->resource->{$prefix.'_synced_at'};
             $attempt = $this->resource->{$prefix.'_sync_started_at'};
             $backfilled = $this->resource->{$prefix.'_backfilled_at'} !== null;
