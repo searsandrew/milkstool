@@ -31,6 +31,10 @@ class TransactionResource extends JsonResource
             'applied_payments' => InvoiceSettlementResource::collection($this->whenLoaded('appliedPayments')),
             'applied_credits' => InvoiceSettlementResource::collection($this->whenLoaded('appliedCredits')),
             'settlements_scope' => $this->when($this->relationLoaded('appliedPayments'), 'same_customer'),
+            'invoice_details' => $this->when($this->type === 'CustInvc' && $this->relationLoaded('lines'), fn () => $this->invoice_details === null ? null : [
+                ...array_intersect_key($this->invoice_details, array_flip(['billing_address', 'shipping_address', 'terms_id', 'terms_name', 'ship_date', 'shipping_method'])),
+                'synced_at' => $this->invoice_details_synced_at?->utc()->toIso8601String(),
+            ]),
             'lines' => TransactionLineResource::collection($this->whenLoaded('lines')),
         ];
     }

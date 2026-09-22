@@ -34,7 +34,9 @@ class StoreInvoice
                 $attributes[$nullable] = $invoice[$nullable] ?? null;
             }
             $transaction->fill([...$attributes, 'company_id' => $company->id,
-                'netsuite_updated_at' => $invoice['updated_at'], 'synced_at' => now(), 'raw_payload' => $invoice])->save();
+                'netsuite_updated_at' => $invoice['updated_at'], 'synced_at' => now(), 'raw_payload' => $invoice]);
+            $transaction->fillInvoiceDetails($invoice);
+            $transaction->save();
 
             $lineIds = [];
             foreach ($lines as $line) {

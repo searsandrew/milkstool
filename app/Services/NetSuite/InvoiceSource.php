@@ -136,6 +136,12 @@ class InvoiceSource
             'foreign_total' => ['required', 'numeric'],
             'memo' => ['nullable', 'string'],
             'due_date' => ['nullable', 'date_format:Y-m-d'],
+            'billing_address' => ['nullable', 'string'],
+            'shipping_address' => ['nullable', 'string'],
+            'terms_id' => ['nullable', 'integer', 'min:1'],
+            'terms_name' => ['nullable', 'string', 'max:255'],
+            'ship_date' => ['nullable', 'date_format:Y-m-d'],
+            'shipping_method' => ['nullable', 'string', 'max:255'],
             'foreign_amount_paid' => ['nullable', 'numeric'],
             'foreign_amount_unpaid' => ['nullable', 'numeric'],
             'updated_at' => ['required', 'date_format:Y-m-d H:i:s'],
@@ -187,6 +193,9 @@ class InvoiceSource
     {
         return 'SELECT id, entity AS customer_id, type, tranid AS number, otherrefnum AS purchase_order_number, '
             ."TO_CHAR(trandate, 'YYYY-MM-DD') AS transaction_date, status, BUILTIN.DF(status) AS status_name, "
+            .'BUILTIN.DF(billingaddress) AS billing_address, shipaddress AS shipping_address, '
+            .'terms AS terms_id, BUILTIN.DF(terms) AS terms_name, '
+            ."TO_CHAR(shipdate, 'YYYY-MM-DD') AS ship_date, BUILTIN.DF(shipmethod) AS shipping_method, "
             .'currency AS currency_id, total, foreigntotal AS foreign_total, memo, '
             ."TO_CHAR(duedate, 'YYYY-MM-DD') AS due_date, foreignamountpaid AS foreign_amount_paid, foreignamountunpaid AS foreign_amount_unpaid, "
             ."TO_CHAR(SYS_EXTRACT_UTC(lastmodifieddate), 'YYYY-MM-DD HH24:MI:SS') AS updated_at "
