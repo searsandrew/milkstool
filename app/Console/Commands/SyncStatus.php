@@ -47,7 +47,7 @@ class SyncStatus extends Command
         }
 
         $now = now()->toImmutable();
-        $fields = ['id', 'netsuite_id', 'name', 'account_number', 'is_active'];
+        $fields = ['id', 'netsuite_id', 'name', 'account_number', 'is_active', 'portal_last_active_at'];
         foreach (['sync_started_at', 'synced_at', 'backfilled_at', 'next_sync_at', 'sync_error'] as $field) {
             $fields[] = $prefix.'_'.$field;
         }
@@ -69,7 +69,7 @@ class SyncStatus extends Command
         $rows = $companies->map(function (Company $company) use ($now, $prefix, $countKey): array {
             $unfinished = $company->{$prefix.'_sync_started_at'} !== null
                 && ($company->{$prefix.'_synced_at'} === null || $company->{$prefix.'_sync_started_at'}->gt($company->{$prefix.'_synced_at'}));
-            $due = ($company->{$prefix.'_next_sync_at'} ?? $company->{$prefix.'_synced_at'}?->addHours(6))?->lte($now) ?? true;
+            $due = $company->refreshDueAt($prefix)?->lte($now) ?? true;
             $status = match (true) {
                 ! $company->is_active => 'inactive',
                 $company->{$prefix.'_sync_error'} !== null => 'failed',
@@ -92,7 +92,7 @@ class SyncStatus extends Command
                 'source_checkpoint_at' => $prefix === 'sales_orders' ? $this->timestamp($company->sales_orders_checkpoint_at) : null,
                 'backfilled_at' => $this->timestamp($company->{$prefix.'_backfilled_at'}),
                 'last_full_sync_at' => $this->timestamp($prefix === 'sales_orders' ? $company->sales_orders_full_synced_at : $company->{$prefix.'_synced_at'}),
-                'next_sync_at' => $this->timestamp($company->{$prefix.'_next_sync_at'}),
+                'next_sync_at' => $this->timestamp($company->refreshDueAt($prefix)),
                 'error' => $company->{$prefix.'_sync_error'},
             ];
         })->when($this->option('attention'), fn ($rows) => $rows->where('needs_attention', true))->values();
@@ -161,7 +161,7 @@ class SyncStatus extends Command
     {
         $rows = [];
 
-        foreach (['customers', 'sales-orders', 'invoices', 'credit-memos'] as $name) {
+        foreach (['customers', 'sales-orders', 'invoices', 'credit-memos', 'balances'] as $name) {
             $row = ['name' => $name, 'ready' => null, 'delayed' => null, 'reserved' => null, 'expired_reservations' => null, 'failed' => null];
 
             if (config('queue.connections.netsuite.driver') === 'database') {

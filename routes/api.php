@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\V1\CustomerActivityController;
+use App\Http\Controllers\Api\V1\CustomerBalanceController;
 use App\Http\Controllers\Api\V1\CustomerInvoiceSummaryController;
 use App\Http\Controllers\Api\V1\CustomerTransactionController;
 use App\Http\Controllers\Api\V1\StatusController;
@@ -19,5 +21,11 @@ Route::prefix('v1/customers/{customer:netsuite_id}')->name('api.v1.customers.')
         Route::get('transactions', [CustomerTransactionController::class, 'index'])->name('transactions.index');
         Route::get('transactions/{transaction}', [CustomerTransactionController::class, 'show'])
             ->whereNumber('transaction')->name('transactions.show');
+        Route::get('balance', CustomerBalanceController::class)->name('balance');
         Route::get('invoice-summary', CustomerInvoiceSummaryController::class)->name('invoice-summary');
     });
+
+Route::post('v1/customers/{customer:netsuite_id}/activity', CustomerActivityController::class)
+    ->whereNumber('customer')
+    ->middleware(['auth:sanctum', 'abilities:activity:write', AuthorizeCustomerRead::class, 'throttle:30,1'])
+    ->name('api.v1.customers.activity');

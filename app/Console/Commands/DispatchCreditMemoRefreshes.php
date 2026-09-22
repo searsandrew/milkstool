@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Jobs\RefreshCreditMemos;
 use App\Models\Company;
 use Illuminate\Console\Command;
-use Illuminate\Database\Eloquent\Builder;
 
 class DispatchCreditMemoRefreshes extends Command
 {
@@ -15,10 +14,9 @@ class DispatchCreditMemoRefreshes extends Command
 
     public function handle(): int
     {
-        $dueAt = now();
         $count = 0;
         $companies = Company::query()->where('is_active', true)
-            ->where(fn (Builder $query) => $query->whereNull('credit_memos_next_sync_at')->orWhere('credit_memos_next_sync_at', '<=', $dueAt))
+            ->dueForRefresh('credit_memos')
             ->select(['id', 'netsuite_id'])->lazyById(100);
 
         foreach ($companies as $company) {

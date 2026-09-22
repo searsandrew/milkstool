@@ -17,7 +17,7 @@ class CustomerSyncResource extends JsonResource
             $backfilled = $this->resource->{$prefix.'_backfilled_at'} !== null;
             $failed = $this->resource->{$prefix.'_sync_error'} !== null;
             $unfinished = $attempt !== null && ($success === null || $attempt->gt($success));
-            $due = ($this->resource->{$prefix.'_next_sync_at'} ?? $success?->addHours(6))?->lte(now()) ?? true;
+            $due = $this->resource->refreshDueAt($prefix)?->lte(now()) ?? true;
             $result[$prefix] = [
                 'last_success_at' => $success?->utc()->toIso8601String(),
                 'last_attempt_at' => $attempt?->utc()->toIso8601String(),

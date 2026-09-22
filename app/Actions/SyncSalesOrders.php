@@ -119,7 +119,7 @@ class SyncSalesOrders
                 'sales_orders_synced_at' => now(),
                 'sales_orders_checkpoint_at' => $checkpoint,
                 'sales_orders_full_synced_at' => $fullScan && ! $resume ? now() : $company->sales_orders_full_synced_at,
-                'sales_orders_next_sync_at' => now()->addHours(6),
+                'sales_orders_next_sync_at' => $company->nextRefreshAt(),
                 'sales_orders_sync_error' => null,
             ])->save();
 

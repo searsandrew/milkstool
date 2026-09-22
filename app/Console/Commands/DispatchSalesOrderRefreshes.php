@@ -5,7 +5,6 @@ namespace App\Console\Commands;
 use App\Jobs\RefreshSalesOrders;
 use App\Models\Company;
 use Illuminate\Console\Command;
-use Illuminate\Database\Eloquent\Builder;
 
 class DispatchSalesOrderRefreshes extends Command
 {
@@ -15,10 +14,9 @@ class DispatchSalesOrderRefreshes extends Command
 
     public function handle(): int
     {
-        $dueAt = now();
         $count = 0;
         $companies = Company::query()->where('is_active', true)
-            ->where(fn (Builder $query) => $query->whereNull('sales_orders_next_sync_at')->orWhere('sales_orders_next_sync_at', '<=', $dueAt))
+            ->dueForRefresh('sales_orders')
             ->select(['id', 'netsuite_id'])->lazyById(100);
 
         foreach ($companies as $company) {

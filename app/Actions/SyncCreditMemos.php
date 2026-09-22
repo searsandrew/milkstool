@@ -73,7 +73,7 @@ class SyncCreditMemos
                 throw new ReceivableSyncInterrupted('The credit memo sync lock expired. Retry the sync.');
             }
             $company->forceFill(['credit_memos_synced_at' => now(), 'credit_memos_sync_error' => null,
-                'credit_memos_next_sync_at' => now()->addHours(6),
+                'credit_memos_next_sync_at' => $company->nextRefreshAt(),
                 'credit_memos_backfilled_at' => $company->credit_memos_backfilled_at ?? now()])->save();
 
             return ['creditMemos' => $creditMemos, 'lines' => $lineCount, 'reconciliation' => $results];

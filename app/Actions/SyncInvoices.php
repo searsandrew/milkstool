@@ -73,7 +73,7 @@ class SyncInvoices
                 throw new ReceivableSyncInterrupted('The invoice sync lock expired. Retry the sync.');
             }
             $company->forceFill(['invoices_synced_at' => now(), 'invoices_sync_error' => null,
-                'invoices_next_sync_at' => now()->addHours(6),
+                'invoices_next_sync_at' => $company->nextRefreshAt(),
                 'invoices_backfilled_at' => $company->invoices_backfilled_at ?? now()])->save();
 
             return ['invoices' => $invoices, 'lines' => $lineCount, 'reconciliation' => $results];

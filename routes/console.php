@@ -27,3 +27,9 @@ Schedule::command('milkstool:dispatch-credit-memo-refreshes')
     ->withoutOverlapping(10)
     ->onOneServer()
     ->when(fn (): bool => config('netsuite-sync.scheduled'));
+
+Schedule::command('milkstool:dispatch-balance-refreshes')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->when(fn (): bool => config('netsuite-sync.scheduled'));

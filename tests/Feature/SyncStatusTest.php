@@ -94,6 +94,7 @@ it('reports global queue states and scopes failed jobs without exposing their pa
         ['unrelated', null, $now],
         ['invoices', null, $now],
         ['credit-memos', null, $now + 60],
+        ['balances', null, $now],
     ] as [$queue, $reserved, $available]) {
         DB::table('jobs')->insert(['queue' => $queue, 'payload' => 'private payload', 'attempts' => 0,
             'reserved_at' => $reserved, 'available_at' => $available, 'created_at' => $now]);
@@ -110,9 +111,10 @@ it('reports global queue states and scopes failed jobs without exposing their pa
         ['name' => 'sales-orders', 'ready' => 1, 'delayed' => 1, 'reserved' => 2, 'expired_reservations' => 1, 'failed' => 1],
         ['name' => 'invoices', 'ready' => 1, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
         ['name' => 'credit-memos', 'ready' => 0, 'delayed' => 1, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
+        ['name' => 'balances', 'ready' => 1, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
     ]);
     expect(Artisan::output())->not->toContain('private payload', 'private exception');
-    $this->assertDatabaseCount('jobs', 8);
+    $this->assertDatabaseCount('jobs', 9);
     $this->assertDatabaseCount('failed_jobs', 2);
     Http::assertNothingSent();
 });
