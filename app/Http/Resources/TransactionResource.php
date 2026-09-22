@@ -28,6 +28,9 @@ class TransactionResource extends JsonResource
             'credit_memo_applications_scope' => $this->when($this->type === 'CustCred', 'same_customer'),
             'payment_applications' => PaymentApplicationResource::collection($this->whenLoaded('paymentApplications')),
             'payment_applications_scope' => $this->when($this->type === 'CustPymt', 'same_customer'),
+            'applied_payments' => InvoiceSettlementResource::collection($this->whenLoaded('appliedPayments')),
+            'applied_credits' => InvoiceSettlementResource::collection($this->whenLoaded('appliedCredits')),
+            'settlements_scope' => $this->when($this->relationLoaded('appliedPayments'), 'same_customer'),
             'lines' => TransactionLineResource::collection($this->whenLoaded('lines')),
         ];
     }

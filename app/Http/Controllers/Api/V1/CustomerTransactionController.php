@@ -52,6 +52,17 @@ class CustomerTransactionController extends Controller
                 ->orderBy('credit_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'paymentApplications' => fn ($query) => $query->where('target_customer_id', $customer->netsuite_id)
                 ->orderBy('payment_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'lines' => fn ($query) => $query->orderBy('netsuite_line_id')])->firstOrFail();
 
+        if ($document->type === 'CustInvc') {
+            foreach (['appliedPayments' => 'CustPymt', 'appliedCredits' => 'CustCred'] as $relation => $type) {
+                $document->load([$relation => fn ($query) => $query
+                    ->where('target_customer_id', $customer->netsuite_id)
+                    ->where('target_type', 'CustInvc')
+                    ->whereHas('transaction', fn ($source) => $source->where('company_id', $customer->id)->where('type', $type))
+                    ->with('transaction:id,netsuite_id,type,number,transaction_date,currency_id,synced_at')
+                    ->orderBy('transaction_id')->orderBy('target_line_id')->orderBy('id')]);
+            }
+        }
+
         return (new TransactionResource($document))->additional(['sync' => new CustomerSyncResource($customer)]);
     }
 }
