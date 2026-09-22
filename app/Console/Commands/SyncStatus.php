@@ -121,7 +121,7 @@ class SyncStatus extends Command
                 'by_status' => array_replace(array_fill_keys(['current', 'due', 'failed', 'never_synced', 'unfinished_attempt', 'inactive'], 0), $rows->countBy('status')->all()),
             ],
             'queue_scope' => 'global',
-            'worker_liveness' => 'not_monitored',
+            'worker_liveness' => 'reported_by_health_check',
             'queues' => $this->queueCounts($now->getTimestamp()),
             'customers' => $rows->all(),
         ];
@@ -160,6 +160,7 @@ class SyncStatus extends Command
         $this->line('Unfinished attempts may be running or interrupted. Reservations and configuration do not establish worker/scheduler liveness.');
         $this->line('Refresh one customer: php artisan milkstool:sync-'.($isBalance ? 'balance' : $type).' <ID> --queue');
         $this->line('Inspect failed jobs: php artisan queue:failed');
+        $this->line('Check scheduler and worker heartbeats: php artisan milkstool:health');
 
         return self::SUCCESS;
     }

@@ -106,6 +106,7 @@ it('reports global queue states and scopes failed jobs without exposing their pa
 
     $report = syncStatusReport();
 
+    expect($report['worker_liveness'])->toBe('reported_by_health_check');
     expect($report['queues'])->toBe([
         ['name' => 'customers', 'ready' => 1, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
         ['name' => 'sales-orders', 'ready' => 1, 'delayed' => 1, 'reserved' => 2, 'expired_reservations' => 1, 'failed' => 1],

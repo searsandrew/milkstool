@@ -39,3 +39,9 @@ Schedule::command('milkstool:dispatch-payment-refreshes')
     ->withoutOverlapping(10)
     ->onOneServer()
     ->when(fn (): bool => config('netsuite-sync.scheduled'));
+
+Schedule::command('milkstool:heartbeat')
+    ->everyMinute()
+    ->withoutOverlapping(2)
+    ->onOneServer()
+    ->when(fn (): bool => config('netsuite-sync.scheduled'));

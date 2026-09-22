@@ -5,11 +5,14 @@ use App\Http\Controllers\Api\V1\CustomerBalanceController;
 use App\Http\Controllers\Api\V1\CustomerInvoiceSummaryController;
 use App\Http\Controllers\Api\V1\CustomerOrderRefreshController;
 use App\Http\Controllers\Api\V1\CustomerTransactionController;
+use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\StatusController;
 use App\Http\Middleware\AuthorizeCustomerRead;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->name('api.v1.')->middleware('auth:sanctum')->group(function (): void {
+    Route::get('health', HealthController::class)
+        ->middleware(['abilities:status:read', 'throttle:60,1'])->name('health');
     Route::get('status', StatusController::class)
         ->middleware('abilities:status:read')
         ->name('status');
