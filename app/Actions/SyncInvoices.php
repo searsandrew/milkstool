@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Exceptions\ReceivableSyncInterrupted;
 use App\Models\Company;
 use App\Services\NetSuite\CustomerSource;
 use App\Services\NetSuite\InvoiceReconciliation;
@@ -28,7 +29,7 @@ class SyncInvoices
         }
         $lock = Cache::lock('netsuite-invoices:'.$customerId, 600);
         if (! $lock->get()) {
-            throw new RuntimeException('An invoice sync is already running for this customer.');
+            throw new ReceivableSyncInterrupted('An invoice sync is already running for this customer.');
         }
 
         try {
@@ -42,12 +43,12 @@ class SyncInvoices
                 $latest = $this->source->invoicesByIds($customerId, $ids);
                 foreach ($batch as $invoice) {
                     if ($invoice != $latest[(int) $invoice['id']]) {
-                        throw new RuntimeException('An invoice changed during import. Retry the sync.');
+                        throw new ReceivableSyncInterrupted('An invoice changed during import. Retry the sync.');
                     }
                 }
                 foreach ($batch as $invoice) {
                     if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
-                        throw new RuntimeException('The invoice sync lock expired. Retry the sync.');
+                        throw new ReceivableSyncInterrupted('The invoice sync lock expired. Retry the sync.');
                     }
                     $invoiceLines = $lines[(int) $invoice['id']];
                     $this->store->handle($company, $invoice, $invoiceLines);
@@ -57,7 +58,7 @@ class SyncInvoices
                 $onProgress?->__invoke($invoices, $lineCount);
             }
             if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
-                throw new RuntimeException('The invoice sync lock expired. Retry the sync.');
+                throw new ReceivableSyncInterrupted('The invoice sync lock expired. Retry the sync.');
             }
             if ($company->transactions()->where('type', 'CustInvc')->count() !== $invoices) {
                 throw new RuntimeException('Local invoice count differs from the source scan. Missing invoices were retained; investigate before retrying.');
@@ -69,9 +70,11 @@ class SyncInvoices
                     .': NetSuite '.$mismatch['source'].', local '.$mismatch['local'].'. Retry or investigate the mismatch.');
             }
             if (! $lock->isOwnedByCurrentProcess()) {
-                throw new RuntimeException('The invoice sync lock expired. Retry the sync.');
+                throw new ReceivableSyncInterrupted('The invoice sync lock expired. Retry the sync.');
             }
-            $company->forceFill(['invoices_synced_at' => now(), 'invoices_sync_error' => null])->save();
+            $company->forceFill(['invoices_synced_at' => now(), 'invoices_sync_error' => null,
+                'invoices_next_sync_at' => now()->addHours(6),
+                'invoices_backfilled_at' => $company->invoices_backfilled_at ?? now()])->save();
 
             return ['invoices' => $invoices, 'lines' => $lineCount, 'reconciliation' => $results];
         } catch (Throwable $exception) {

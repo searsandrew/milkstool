@@ -15,3 +15,15 @@ Schedule::command('milkstool:sync-customers --queue')
     ->withoutOverlapping(10)
     ->onOneServer()
     ->when(fn (): bool => config('netsuite-sync.scheduled'));
+
+Schedule::command('milkstool:dispatch-invoice-refreshes')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->when(fn (): bool => config('netsuite-sync.scheduled'));
+
+Schedule::command('milkstool:dispatch-credit-memo-refreshes')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer()
+    ->when(fn (): bool => config('netsuite-sync.scheduled'));

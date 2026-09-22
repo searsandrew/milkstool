@@ -92,6 +92,8 @@ it('reports global queue states and scopes failed jobs without exposing their pa
         ['sales-orders', $now, $now],
         ['sales-orders', $now - 1260, $now],
         ['unrelated', null, $now],
+        ['invoices', null, $now],
+        ['credit-memos', null, $now + 60],
     ] as [$queue, $reserved, $available]) {
         DB::table('jobs')->insert(['queue' => $queue, 'payload' => 'private payload', 'attempts' => 0,
             'reserved_at' => $reserved, 'available_at' => $available, 'created_at' => $now]);
@@ -106,9 +108,11 @@ it('reports global queue states and scopes failed jobs without exposing their pa
     expect($report['queues'])->toBe([
         ['name' => 'customers', 'ready' => 1, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
         ['name' => 'sales-orders', 'ready' => 1, 'delayed' => 1, 'reserved' => 2, 'expired_reservations' => 1, 'failed' => 1],
+        ['name' => 'invoices', 'ready' => 1, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
+        ['name' => 'credit-memos', 'ready' => 0, 'delayed' => 1, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
     ]);
     expect(Artisan::output())->not->toContain('private payload', 'private exception');
-    $this->assertDatabaseCount('jobs', 6);
+    $this->assertDatabaseCount('jobs', 8);
     $this->assertDatabaseCount('failed_jobs', 2);
     Http::assertNothingSent();
 });
@@ -136,3 +140,29 @@ it('rejects invalid or unregistered customer IDs', function (string $id) {
     $this->artisan('milkstool:sync-status', ['--customer' => $id])->assertFailed();
     Http::assertNothingSent();
 })->with(['0', '-1', '16 OR 1=1', '999999']);
+
+it('reports billing freshness independently from sales orders', function (string $type, string $prefix, string $sourceType, string $countKey) {
+    $company = Company::factory()->create(['netsuite_id' => 16, $prefix.'_synced_at' => now(),
+        $prefix.'_backfilled_at' => now(), $prefix.'_next_sync_at' => now()->addHours(6)]);
+    Transaction::factory()->for($company)->create(['type' => $sourceType]);
+    Transaction::factory()->for($company)->create(['type' => 'SalesOrd']);
+
+    $report = syncStatusReport(['--type' => $type]);
+
+    expect($report['type'])->toBe($type);
+    expect($report['summary'][$prefix])->toBe(1);
+    expect($report['customers'][0]['last_full_sync_at'])->toBe($report['customers'][0]['last_success_at']);
+    expect($report['customers'][0])->toMatchArray(['status' => 'current', 'needs_attention' => false, $countKey => 1]);
+    $this->artisan('milkstool:sync-status', ['--type' => $type, '--customer' => 16])->assertSuccessful();
+    $company->forceFill([$prefix.'_sync_error' => 'Failed'])->save();
+    expect(syncStatusReport(['--type' => $type, '--attention' => true])['customers'][0]['status'])->toBe('failed');
+    Http::assertNothingSent();
+})->with([
+    ['invoices', 'invoices', 'CustInvc', 'invoice_count'],
+    ['credit-memos', 'credit_memos', 'CustCred', 'credit_memo_count'],
+]);
+
+it('rejects unsupported status types', function () {
+    $this->artisan('milkstool:sync-status', ['--type' => 'payments'])->assertFailed();
+    Http::assertNothingSent();
+});

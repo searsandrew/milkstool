@@ -12,15 +12,28 @@ use Symfony\Component\Console\Output\OutputInterface;
 class SyncStatus extends Command
 {
     protected $signature = 'milkstool:sync-status
+        {--type=sales-orders : sales-orders, invoices, or credit-memos}
         {--customer= : NetSuite internal ID, including inactive customers}
         {--attention : Show only active customers with unfinished backfills or refreshes needing attention}
         {--include-inactive : Include inactive customers in the list}
         {--json : Output a machine-readable report}';
 
-    protected $description = 'Show local sales-order sync freshness, backfill completion, and queue counts without contacting NetSuite';
+    protected $description = 'Show local transaction sync freshness, backfill completion, and queue counts without contacting NetSuite';
 
     public function handle(): int
     {
+        $types = [
+            'sales-orders' => ['sales_orders', 'SalesOrd', 'sales_order_count', 'Orders'],
+            'invoices' => ['invoices', 'CustInvc', 'invoice_count', 'Invoices'],
+            'credit-memos' => ['credit_memos', 'CustCred', 'credit_memo_count', 'Credit memos'],
+        ];
+        $type = $this->option('type');
+        if (! isset($types[$type])) {
+            $this->error('Type must be sales-orders, invoices, or credit-memos.');
+
+            return self::FAILURE;
+        }
+        [$prefix, $sourceType, $countKey, $label] = $types[$type];
         $customerId = null;
 
         if ($this->option('customer') !== null) {
@@ -34,13 +47,17 @@ class SyncStatus extends Command
         }
 
         $now = now()->toImmutable();
-        $companies = Company::query()->select([
-            'id', 'netsuite_id', 'name', 'account_number', 'is_active', 'sales_orders_sync_started_at',
-            'sales_orders_synced_at', 'sales_orders_checkpoint_at', 'sales_orders_backfilled_at',
-            'sales_orders_full_synced_at', 'sales_orders_next_sync_at', 'sales_orders_sync_error',
-        ])->when($customerId !== null, fn (Builder $query) => $query->where('netsuite_id', $customerId))
+        $fields = ['id', 'netsuite_id', 'name', 'account_number', 'is_active'];
+        foreach (['sync_started_at', 'synced_at', 'backfilled_at', 'next_sync_at', 'sync_error'] as $field) {
+            $fields[] = $prefix.'_'.$field;
+        }
+        if ($type === 'sales-orders') {
+            $fields = [...$fields, 'sales_orders_checkpoint_at', 'sales_orders_full_synced_at'];
+        }
+        $companies = Company::query()->select($fields)
+            ->when($customerId !== null, fn (Builder $query) => $query->where('netsuite_id', $customerId))
             ->when($customerId === null && ! $this->option('include-inactive'), fn (Builder $query) => $query->where('is_active', true))
-            ->withCount(['transactions as sales_order_count' => fn (Builder $query) => $query->where('type', 'SalesOrd')])
+            ->withCount(['transactions as '.$countKey => fn (Builder $query) => $query->where('type', $sourceType)])
             ->orderBy('netsuite_id')->get();
 
         if ($customerId !== null && $companies->isEmpty()) {
@@ -49,15 +66,15 @@ class SyncStatus extends Command
             return self::FAILURE;
         }
 
-        $rows = $companies->map(function (Company $company) use ($now): array {
-            $unfinished = $company->sales_orders_sync_started_at !== null
-                && ($company->sales_orders_synced_at === null || $company->sales_orders_sync_started_at->gt($company->sales_orders_synced_at));
-            $due = ($company->sales_orders_next_sync_at ?? $company->sales_orders_synced_at?->addHours(6))?->lte($now) ?? true;
+        $rows = $companies->map(function (Company $company) use ($now, $prefix, $countKey): array {
+            $unfinished = $company->{$prefix.'_sync_started_at'} !== null
+                && ($company->{$prefix.'_synced_at'} === null || $company->{$prefix.'_sync_started_at'}->gt($company->{$prefix.'_synced_at'}));
+            $due = ($company->{$prefix.'_next_sync_at'} ?? $company->{$prefix.'_synced_at'}?->addHours(6))?->lte($now) ?? true;
             $status = match (true) {
                 ! $company->is_active => 'inactive',
-                $company->sales_orders_sync_error !== null => 'failed',
+                $company->{$prefix.'_sync_error'} !== null => 'failed',
                 $unfinished => 'unfinished_attempt',
-                $company->sales_orders_synced_at === null => 'never_synced',
+                $company->{$prefix.'_synced_at'} === null => 'never_synced',
                 $due => 'due',
                 default => 'current',
             };
@@ -68,26 +85,27 @@ class SyncStatus extends Command
                 'name' => $company->name,
                 'active' => $company->is_active,
                 'status' => $status,
-                'needs_attention' => $company->is_active && ($status !== 'current' || $company->sales_orders_backfilled_at === null),
-                'sales_order_count' => (int) $company->sales_order_count,
-                'last_attempt_at' => $this->timestamp($company->sales_orders_sync_started_at),
-                'last_success_at' => $this->timestamp($company->sales_orders_synced_at),
-                'source_checkpoint_at' => $this->timestamp($company->sales_orders_checkpoint_at),
-                'backfilled_at' => $this->timestamp($company->sales_orders_backfilled_at),
-                'last_full_sync_at' => $this->timestamp($company->sales_orders_full_synced_at),
-                'next_sync_at' => $this->timestamp($company->sales_orders_next_sync_at),
-                'error' => $company->sales_orders_sync_error,
+                'needs_attention' => $company->is_active && ($status !== 'current' || $company->{$prefix.'_backfilled_at'} === null),
+                $countKey => (int) $company->{$countKey},
+                'last_attempt_at' => $this->timestamp($company->{$prefix.'_sync_started_at'}),
+                'last_success_at' => $this->timestamp($company->{$prefix.'_synced_at'}),
+                'source_checkpoint_at' => $prefix === 'sales_orders' ? $this->timestamp($company->sales_orders_checkpoint_at) : null,
+                'backfilled_at' => $this->timestamp($company->{$prefix.'_backfilled_at'}),
+                'last_full_sync_at' => $this->timestamp($prefix === 'sales_orders' ? $company->sales_orders_full_synced_at : $company->{$prefix.'_synced_at'}),
+                'next_sync_at' => $this->timestamp($company->{$prefix.'_next_sync_at'}),
+                'error' => $company->{$prefix.'_sync_error'},
             ];
         })->when($this->option('attention'), fn ($rows) => $rows->where('needs_attention', true))->values();
 
         $report = [
+            'type' => $type,
             'generated_at' => $this->timestamp($now),
             'scheduled_sync_enabled' => (bool) config('netsuite-sync.scheduled'),
             'summary' => [
                 'customers' => $rows->count(),
                 'backfilled' => $rows->whereNotNull('backfilled_at')->count(),
                 'needs_attention' => $rows->where('needs_attention', true)->count(),
-                'sales_orders' => $rows->sum('sales_order_count'),
+                $prefix => $rows->sum($countKey),
                 'by_status' => array_replace(array_fill_keys(['current', 'due', 'failed', 'never_synced', 'unfinished_attempt', 'inactive'], 0), $rows->countBy('status')->all()),
             ],
             'queue_scope' => 'global',
@@ -103,11 +121,12 @@ class SyncStatus extends Command
         }
 
         $summary = $report['summary'];
+        $summaryLabel = $type === 'sales-orders' ? 'sales orders' : strtolower($label);
         $this->line('Scheduled sync configuration: '.($report['scheduled_sync_enabled'] ? 'enabled' : 'disabled'));
-        $this->line("Matching customers: {$summary['customers']}; backfilled: {$summary['backfilled']}; need attention: {$summary['needs_attention']}; sales orders: {$summary['sales_orders']}.");
-        $this->table(['NetSuite ID', 'Account', 'Customer', 'Status', 'Orders', 'Backfilled', 'Last success (UTC)', 'Next sync (UTC)'],
+        $this->line("Matching customers: {$summary['customers']}; backfilled: {$summary['backfilled']}; need attention: {$summary['needs_attention']}; {$summaryLabel}: {$summary[$prefix]}.");
+        $this->table(['NetSuite ID', 'Account', 'Customer', 'Status', $label, 'Backfilled', 'Last success (UTC)', 'Next sync (UTC)'],
             $rows->map(fn (array $row): array => [
-                $row['netsuite_id'], $row['account_number'] ?? '-', $row['name'], $row['status'], $row['sales_order_count'],
+                $row['netsuite_id'], $row['account_number'] ?? '-', $row['name'], $row['status'], $row[$countKey],
                 $row['backfilled_at'] === null ? 'No' : 'Yes', $row['last_success_at'] ?? '-', $row['next_sync_at'] ?? '-',
             ])->all());
         $this->table(['Queue (global)', 'Ready', 'Delayed', 'Reserved', 'Expired reservations', 'Failed'],
@@ -126,7 +145,7 @@ class SyncStatus extends Command
         }
 
         $this->line('Unfinished attempts may be running or interrupted. Reservations and configuration do not establish worker/scheduler liveness.');
-        $this->line('Refresh one customer: php artisan milkstool:sync-sales-orders <ID> --queue');
+        $this->line('Refresh one customer: php artisan milkstool:sync-'.$type.' <ID> --queue');
         $this->line('Inspect failed jobs: php artisan queue:failed');
 
         return self::SUCCESS;
@@ -142,7 +161,7 @@ class SyncStatus extends Command
     {
         $rows = [];
 
-        foreach (['customers', 'sales-orders'] as $name) {
+        foreach (['customers', 'sales-orders', 'invoices', 'credit-memos'] as $name) {
             $row = ['name' => $name, 'ready' => null, 'delayed' => null, 'reserved' => null, 'expired_reservations' => null, 'failed' => null];
 
             if (config('queue.connections.netsuite.driver') === 'database') {

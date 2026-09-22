@@ -81,6 +81,7 @@ it('preserves last success when reconciliation fails', function (array $header, 
 
     expect($company->refresh()->invoices_synced_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 12:00:00');
     expect($company->invoices_sync_error)->not->toBeNull();
+    expect($company->invoices_backfilled_at)->toBeNull();
     expect(Cache::lock('netsuite-invoices:16', 600)->get())->toBeTrue();
     Http::assertSentCount(6);
 })->with([
@@ -186,6 +187,7 @@ it('keeps completed batches but leaves freshness unchanged when a later page fai
     $this->assertDatabaseCount('transaction_lines', 50);
     expect($company->refresh()->invoices_synced_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 12:00:00');
     expect($company->invoices_sync_error)->not->toBeNull();
+    expect($company->invoices_backfilled_at)->toBeNull();
     Http::assertSentCount(5);
 });
 
