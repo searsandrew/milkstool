@@ -2,6 +2,7 @@
 
 namespace App\Services\NetSuite;
 
+use Generator;
 use Illuminate\Support\Facades\Validator;
 use InvalidArgumentException;
 use RuntimeException;
@@ -16,12 +17,7 @@ class InvoiceSource
         $this->assertPositiveId($customerId);
         $this->assertPositiveId($invoiceId);
         $page = $this->client->query(
-            'SELECT id, entity AS customer_id, type, tranid AS number, otherrefnum AS purchase_order_number, '
-            ."TO_CHAR(trandate, 'YYYY-MM-DD') AS transaction_date, status, BUILTIN.DF(status) AS status_name, "
-            .'currency AS currency_id, total, foreigntotal AS foreign_total, memo, '
-            ."TO_CHAR(duedate, 'YYYY-MM-DD') AS due_date, foreignamountpaid AS foreign_amount_paid, foreignamountunpaid AS foreign_amount_unpaid, "
-            ."TO_CHAR(SYS_EXTRACT_UTC(lastmodifieddate), 'YYYY-MM-DD HH24:MI:SS') AS updated_at "
-            ."FROM transaction WHERE entity = {$customerId} AND type = 'CustInvc' AND id = {$invoiceId}"
+            $this->headerSql()." WHERE entity = {$customerId} AND type = 'CustInvc' AND id = {$invoiceId}"
         );
 
         if (count($page['items']) !== 1 || $page['hasMore']) {
@@ -96,7 +92,7 @@ class InvoiceSource
 
         foreach ($lines as $invoiceLines) {
             if ($invoiceLines === []) {
-                throw new RuntimeException('NetSuite returned no lines for a invoice; existing data was retained.');
+                throw new RuntimeException('NetSuite returned no lines for an invoice; existing data was retained.');
             }
         }
 
@@ -144,6 +140,113 @@ class InvoiceSource
             'foreign_amount_unpaid' => ['nullable', 'numeric'],
             'updated_at' => ['required', 'date_format:Y-m-d H:i:s'],
         ])->validate();
+    }
+
+    /** @return Generator<int, array<string, mixed>> */
+    public function invoices(int $customerId): Generator
+    {
+        $this->assertPositiveId($customerId);
+        $lastId = 0;
+        do {
+            $page = $this->client->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'CustInvc' AND id > {$lastId} ORDER BY id");
+            foreach ($page['items'] as $invoice) {
+                $this->validateInvoice($invoice, $customerId);
+                if ((int) $invoice['id'] <= $lastId) {
+                    throw new RuntimeException('NetSuite invoice pagination did not advance.');
+                }
+                $lastId = (int) $invoice['id'];
+                yield $invoice;
+            }
+        } while ($page['hasMore']);
+    }
+
+    /** @param list<int> $invoiceIds
+     * @return array<int, array<string, mixed>>
+     */
+    public function invoicesByIds(int $customerId, array $invoiceIds): array
+    {
+        $ids = $this->invoiceIdList($customerId, $invoiceIds);
+        $page = $this->client->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'CustInvc' AND id IN ({$ids}) ORDER BY id");
+        $invoices = [];
+        foreach ($page['items'] as $invoice) {
+            $this->validateInvoice($invoice, $customerId);
+            $id = (int) $invoice['id'];
+            if (! in_array($id, $invoiceIds, true) || isset($invoices[$id])) {
+                throw new RuntimeException('NetSuite returned an unexpected or duplicate invoice.');
+            }
+            $invoices[$id] = $invoice;
+        }
+        if ($page['hasMore'] || count($invoices) !== count($invoiceIds)) {
+            throw new RuntimeException('An invoice disappeared or moved during import. Retry the sync.');
+        }
+
+        return $invoices;
+    }
+
+    private function headerSql(): string
+    {
+        return 'SELECT id, entity AS customer_id, type, tranid AS number, otherrefnum AS purchase_order_number, '
+            ."TO_CHAR(trandate, 'YYYY-MM-DD') AS transaction_date, status, BUILTIN.DF(status) AS status_name, "
+            .'currency AS currency_id, total, foreigntotal AS foreign_total, memo, '
+            ."TO_CHAR(duedate, 'YYYY-MM-DD') AS due_date, foreignamountpaid AS foreign_amount_paid, foreignamountunpaid AS foreign_amount_unpaid, "
+            ."TO_CHAR(SYS_EXTRACT_UTC(lastmodifieddate), 'YYYY-MM-DD HH24:MI:SS') AS updated_at "
+            .'FROM transaction';
+    }
+
+    /** @return array{invoices: list<array<string, mixed>>, lines: list<array<string, mixed>>} */
+    public function controlTotals(int $customerId): array
+    {
+        $this->assertPositiveId($customerId);
+        $invoices = $this->client->query(<<<SQL
+            SELECT currency AS currency_id, COUNT(*) AS invoice_count,
+                COUNT(foreignamountpaid) AS paid_count, COUNT(foreignamountunpaid) AS unpaid_count,
+                TO_CHAR(NVL(SUM(foreignamountpaid), 0)) AS foreign_amount_paid,
+                TO_CHAR(NVL(SUM(foreignamountunpaid), 0)) AS foreign_amount_unpaid,
+                TO_CHAR(SUM(total)) AS total, TO_CHAR(SUM(foreigntotal)) AS foreign_total
+            FROM transaction
+            WHERE entity = {$customerId} AND type = 'CustInvc'
+            GROUP BY currency
+            ORDER BY currency
+            SQL);
+        $lines = $this->client->query(<<<SQL
+            SELECT transaction.currency AS currency_id, COUNT(*) AS line_count,
+                COUNT(transactionline.quantity) AS quantity_count,
+                COUNT(transactionline.netamount) AS amount_count,
+                TO_CHAR(NVL(SUM(transactionline.quantity), 0)) AS quantity,
+                TO_CHAR(NVL(SUM(transactionline.netamount), 0)) AS amount,
+                TO_CHAR(NVL(SUM(CASE WHEN transactionline.mainline = 'F' THEN transactionline.netamount ELSE 0 END), 0)) AS detail_amount
+            FROM transactionline
+            JOIN transaction ON transaction.id = transactionline.transaction
+            WHERE transaction.entity = {$customerId} AND transaction.type = 'CustInvc'
+            GROUP BY transaction.currency
+            ORDER BY transaction.currency
+            SQL);
+
+        if ($invoices['hasMore'] || $lines['hasMore']) {
+            throw new RuntimeException('NetSuite control totals were truncated; reconciliation cannot complete.');
+        }
+
+        Validator::make($invoices, [
+            'items.*.currency_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'items.*.invoice_count' => ['required', 'integer', 'min:1'],
+            'items.*.paid_count' => ['required', 'integer', 'min:0'],
+            'items.*.unpaid_count' => ['required', 'integer', 'min:0'],
+            'items.*.foreign_amount_paid' => ['required', 'numeric'],
+            'items.*.foreign_amount_unpaid' => ['required', 'numeric'],
+            'items.*.total' => ['required', 'numeric'],
+            'items.*.foreign_total' => ['required', 'numeric'],
+        ])->validate();
+        Validator::make($lines, [
+            'items.*.currency_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'items.*.line_count' => ['required', 'integer', 'min:1'],
+            'items.*.quantity_count' => ['required', 'integer', 'min:0'],
+            'items.*.amount_count' => ['required', 'integer', 'min:0'],
+            'items.*.quantity' => ['required', 'numeric'],
+            'items.*.amount' => ['required', 'numeric'],
+            'items.*.detail_amount' => ['required', 'numeric'],
+        ])->validate();
+
+        return ['invoices' => $invoices['items'], 'lines' => $lines['items']];
     }
 
     private function assertPositiveId(int $id): void

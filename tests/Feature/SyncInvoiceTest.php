@@ -11,32 +11,6 @@ beforeEach(function () {
     fakeNetSuiteConfiguration();
 });
 
-/** @param array<string, mixed> $overrides
- * @return array<string, mixed>
- */
-function sourceInvoice(array $overrides = []): array
-{
-    return array_replace(sourceOrder(), ['id' => '1347', 'type' => 'CustInvc', 'number' => 'INV01',
-        'due_date' => '2026-09-30', 'foreign_amount_paid' => '20', 'foreign_amount_unpaid' => '5.12345678'], $overrides);
-}
-
-/** @param array<string, mixed> $overrides
- * @return array<string, mixed>
- */
-function sourceInvoiceLine(array $overrides = []): array
-{
-    return array_replace(sourceLine(), ['transaction_id' => '1347', 'source_transaction_id' => '101'], $overrides);
-}
-
-/** @param list<array<string, mixed>> $lines
- * @param  array<string, mixed>  $header
- */
-function fakeSingleInvoice(array $lines, array $header = []): void
-{
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
-        ->push(sourcePage([sourceInvoice($header)]))->push(sourcePage($lines))->push(sourcePage([sourceInvoice($header)]))]);
-}
-
 it('imports an invoice with exact monetary fields, nullable lines and source references without touching order freshness', function () {
     $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_synced_at' => '2026-09-01 12:00:00']);
     $order = Transaction::factory()->for($company)->create(['netsuite_id' => 101]);

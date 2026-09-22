@@ -6,12 +6,11 @@ use App\Models\Company;
 use App\Models\Transaction;
 use App\Services\NetSuite\InvoiceSource;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class SyncInvoice
 {
-    public function __construct(private InvoiceSource $source) {}
+    public function __construct(private InvoiceSource $source, private StoreInvoice $store) {}
 
     public function handle(int $customerId, int $invoiceId): Transaction
     {
@@ -40,40 +39,7 @@ class SyncInvoice
                 throw new RuntimeException('The invoice sync lock expired. Retry the sync.');
             }
 
-            return DB::transaction(function () use ($company, $invoiceId, $invoice, $lines): Transaction {
-                $transaction = Transaction::query()->firstOrNew(['netsuite_id' => $invoiceId]);
-
-                if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'CustInvc')) {
-                    throw new RuntimeException('This transaction belongs to another customer or transaction type.');
-                }
-
-                $attributes = array_intersect_key($invoice, array_flip([
-                    'type', 'number', 'purchase_order_number', 'transaction_date', 'status', 'status_name',
-                    'currency_id', 'total', 'foreign_total', 'memo', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid',
-                ]));
-                foreach (['purchase_order_number', 'status_name', 'memo', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid'] as $nullable) {
-                    $attributes[$nullable] = $invoice[$nullable] ?? null;
-                }
-                $transaction->fill([...$attributes, 'company_id' => $company->id,
-                    'netsuite_updated_at' => $invoice['updated_at'], 'synced_at' => now(), 'raw_payload' => $invoice])->save();
-
-                $lineIds = [];
-                foreach ($lines as $line) {
-                    $lineIds[] = (int) $line['line_id'];
-                    $transaction->lines()->updateOrCreate(['netsuite_line_id' => $line['line_id']], [
-                        'source_transaction_id' => $line['source_transaction_id'] ?? null,
-                        'item_id' => $line['item_id'] ?? null, 'item_number' => $line['item_number'] ?? null,
-                        'memo' => $line['memo'] ?? null, 'quantity' => $line['quantity'] ?? null,
-                        'rate' => $line['rate'] ?? null, 'amount' => $line['amount'] ?? null,
-                        'is_mainline' => $line['mainline'] === 'T', 'is_tax_line' => $line['taxline'] === 'T',
-                        'is_discount_line' => $line['discount_line'] === 'T',
-                        'line_type' => $line['line_type'] ?? null, 'raw_payload' => $line,
-                    ]);
-                }
-                $transaction->lines()->whereNotIn('netsuite_line_id', $lineIds)->delete();
-
-                return $transaction;
-            });
+            return $this->store->handle($company, $invoice, $lines);
         } finally {
             $lock->release();
         }
