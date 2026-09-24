@@ -36,17 +36,17 @@ class BackfillInvoiceDetails extends Command
         try {
             $customers = Company::query()->where('is_active', true)
                 ->whereHas('transactions', fn (Builder $query) => $query->where('type', 'CustInvc')->whereNull('invoice_details_synced_at'))
-                ->orderBy('netsuite_id')->limit($limit)->get(['id', 'netsuite_id']);
+                ->orderBy('id')->limit($limit)->get(['id']);
             $completed = 0;
             foreach ($customers as $customer) {
                 if (! $backfillLock->refresh(86400) && ! $backfillLock->isOwnedByCurrentProcess()) {
                     throw new RuntimeException('The backfill lock expired.');
                 }
-                $this->line('Invoice details for customer '.$customer->netsuite_id);
+                $this->line('Invoice details for customer '.$customer->id);
                 if ($this->option('dry-run')) {
                     continue;
                 }
-                $lock = Cache::lock('netsuite-invoices:'.$customer->netsuite_id, 600);
+                $lock = Cache::lock('netsuite-invoices:'.$customer->id, 600);
                 if (! $lock->get()) {
                     $this->error('An invoice sync is already running for this customer. Rerun to resume.');
 
@@ -55,9 +55,9 @@ class BackfillInvoiceDetails extends Command
                 try {
                     $customer->transactions()->where('type', 'CustInvc')->whereNull('invoice_details_synced_at')
                         ->chunkById(50, function ($invoices) use ($customer, $source, $lock, &$completed): void {
-                            $ids = $invoices->pluck('netsuite_id')->map(fn ($id): int => (int) $id)->all();
-                            $headers = $source->invoicesByIds((int) $customer->netsuite_id, $ids);
-                            $verified = $source->invoicesByIds((int) $customer->netsuite_id, $ids);
+                            $ids = $invoices->pluck('id')->map(fn ($id): int => (int) $id)->all();
+                            $headers = $source->invoicesByIds((int) $customer->id, $ids);
+                            $verified = $source->invoicesByIds((int) $customer->id, $ids);
                             if ($headers != $verified) {
                                 throw new RuntimeException('Invoice headers changed during retrieval.');
                             }
@@ -66,7 +66,7 @@ class BackfillInvoiceDetails extends Command
                             }
                             DB::transaction(function () use ($invoices, $headers): void {
                                 foreach ($invoices as $invoice) {
-                                    $invoice->fillInvoiceDetails($headers[(int) $invoice->netsuite_id]);
+                                    $invoice->fillInvoiceDetails($headers[(int) $invoice->id]);
                                     $invoice->save();
                                 }
                             });
@@ -80,7 +80,7 @@ class BackfillInvoiceDetails extends Command
                         $exception instanceof RuntimeException => $exception->getMessage(),
                         default => class_basename($exception),
                     };
-                    $this->error('Invoice details backfill stopped at customer '.$customer->netsuite_id.' ('.$reason.'). Completed invoices will be skipped when rerun.');
+                    $this->error('Invoice details backfill stopped at customer '.$customer->id.' ('.$reason.'). Completed invoices will be skipped when rerun.');
 
                     return self::FAILURE;
                 } finally {

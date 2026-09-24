@@ -9,11 +9,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['netsuite_id', 'company_id', 'type', 'number', 'purchase_order_number', 'transaction_date', 'status', 'status_name', 'currency_id', 'total', 'foreign_total', 'memo', 'netsuite_updated_at', 'synced_at', 'raw_payload', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid', 'invoice_details', 'invoice_details_synced_at'])]
+#[Fillable(['id', 'company_id', 'type', 'number', 'purchase_order_number', 'transaction_date', 'status', 'status_name', 'currency_id', 'total', 'foreign_total', 'memo', 'netsuite_updated_at', 'synced_at', 'raw_payload', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid', 'invoice_details', 'invoice_details_synced_at'])]
 class Transaction extends Model
 {
     /** @use HasFactory<TransactionFactory> */
     use HasFactory;
+
+    public $incrementing = false;
 
     /** @return array<string, string> */
     protected function casts(): array
@@ -53,13 +55,13 @@ class Transaction extends Model
     /** @return HasMany<PaymentApplication, $this> */
     public function appliedPayments(): HasMany
     {
-        return $this->hasMany(PaymentApplication::class, 'target_netsuite_id', 'netsuite_id');
+        return $this->hasMany(PaymentApplication::class, 'target_netsuite_id', 'id');
     }
 
     /** @return HasMany<CreditMemoApplication, $this> */
     public function appliedCredits(): HasMany
     {
-        return $this->hasMany(CreditMemoApplication::class, 'target_netsuite_id', 'netsuite_id');
+        return $this->hasMany(CreditMemoApplication::class, 'target_netsuite_id', 'id');
     }
 
     /** @return HasMany<CreditMemoApplication, $this> */

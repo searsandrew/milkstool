@@ -12,7 +12,7 @@ class TransactionFactory extends Factory
     public function definition(): array
     {
         return [
-            'netsuite_id' => fake()->unique()->numberBetween(1, 1000000),
+            'id' => fake()->unique()->numberBetween(1, 1000000),
             'company_id' => Company::factory(),
             'type' => 'SalesOrd',
             'number' => fake()->unique()->numerify('SO#####'),

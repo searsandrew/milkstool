@@ -17,15 +17,15 @@ class DispatchBalanceRefreshes extends Command
         $count = 0;
         $companies = Company::query()->where('is_active', true)
             ->dueForRefresh('balance')
-            ->select(['id', 'netsuite_id'])->lazyById(100);
+            ->select(['id'])->lazyById(100);
 
         foreach ($companies as $company) {
             $count++;
 
             if ($this->option('dry-run')) {
-                $this->line('Due: NetSuite customer '.$company->netsuite_id);
+                $this->line('Due: NetSuite customer '.$company->id);
             } else {
-                RefreshCustomerBalance::dispatch((int) $company->netsuite_id);
+                RefreshCustomerBalance::dispatch((int) $company->id);
             }
         }
 

@@ -29,10 +29,10 @@ it('queues a requested customer once without contacting NetSuite in the command'
 
 it('dispatches only due active registered customers', function () {
     Queue::fake();
-    Company::factory()->create(['netsuite_id' => 16, 'is_active' => true]);
-    Company::factory()->create(['netsuite_id' => 17, 'is_active' => true, 'sales_orders_next_sync_at' => now()]);
-    Company::factory()->create(['netsuite_id' => 18, 'is_active' => false]);
-    Company::factory()->create(['netsuite_id' => 19, 'is_active' => true, 'sales_orders_next_sync_at' => now()->addMinute()]);
+    Company::factory()->create(['id' => 16, 'is_active' => true]);
+    Company::factory()->create(['id' => 17, 'is_active' => true, 'sales_orders_next_sync_at' => now()]);
+    Company::factory()->create(['id' => 18, 'is_active' => false]);
+    Company::factory()->create(['id' => 19, 'is_active' => true, 'sales_orders_next_sync_at' => now()->addMinute()]);
 
     $this->artisan('milkstool:dispatch-sales-order-refreshes')->assertSuccessful();
 
@@ -44,7 +44,7 @@ it('dispatches only due active registered customers', function () {
 
 it('lists due customers without enqueueing in dry run mode', function () {
     Queue::fake();
-    Company::factory()->create(['netsuite_id' => 16, 'is_active' => true]);
+    Company::factory()->create(['id' => 16, 'is_active' => true]);
 
     $this->artisan('milkstool:dispatch-sales-order-refreshes', ['--dry-run' => true])
         ->expectsOutput('Due: NetSuite customer 16')->expectsOutput('1 customers due. No jobs queued.')->assertSuccessful();
@@ -93,7 +93,7 @@ it('allows the queue to retry a connection failure or a busy customer lock', fun
 })->with([true, false]);
 
 it('fails permanent NetSuite errors immediately and delays the next baseline attempt', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_synced_at' => '2026-09-15 12:00:00']);
+    $company = Company::factory()->create(['id' => 16, 'sales_orders_synced_at' => '2026-09-15 12:00:00']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response([], 403)]);
     RefreshSalesOrders::dispatch(16);
 
@@ -139,7 +139,7 @@ it('reserves the queue job longer than its execution timeout', function () {
 
 it('does not overwrite a newer successful sync when an older queued job fails', function () {
     $job = new RefreshSalesOrders(16);
-    $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_synced_at' => now()->addMinute(),
+    $company = Company::factory()->create(['id' => 16, 'sales_orders_synced_at' => now()->addMinute(),
         'sales_orders_next_sync_at' => '2026-09-16 18:01:00']);
 
     $job->failed(new RuntimeException('An older job failed'));

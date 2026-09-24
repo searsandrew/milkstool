@@ -54,26 +54,30 @@ class CustomerTransactionController extends Controller
         $sortColumn = $sortColumns[$filters['sort_by'] ?? 'date'];
         $direction = $filters['sort_direction'] ?? 'desc';
 
-        return TransactionResource::collection($query->orderBy($sortColumn, $direction)->orderBy('netsuite_id', $direction)
+        return TransactionResource::collection($query->orderBy($sortColumn, $direction)->orderBy('id', $direction)
             ->paginate($filters['per_page'] ?? 25)->withQueryString())
             ->additional(['sync' => new CustomerSyncResource($customer)]);
     }
 
     public function show(Company $customer, string $transaction): TransactionResource
     {
-        $document = $customer->transactions()->where('netsuite_id', $transaction)
+        $document = $customer->transactions()->where('id', $transaction)
             ->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred', 'CustPymt'])
-            ->with(['creditMemoApplications' => fn ($query) => $query->where('target_customer_id', $customer->netsuite_id)
-                ->orderBy('credit_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'paymentApplications' => fn ($query) => $query->where('target_customer_id', $customer->netsuite_id)
+            ->with(['creditMemoApplications' => fn ($query) => $query->where('target_customer_id', $customer->id)
+                ->orderBy('credit_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'paymentApplications' => fn ($query) => $query->where('target_customer_id', $customer->id)
                 ->orderBy('payment_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'lines' => fn ($query) => $query->orderBy('netsuite_line_id')])->firstOrFail();
 
         if ($document->type === 'CustInvc') {
+            $document->setRelation('salesOrders', $customer->transactions()
+                ->where('type', 'SalesOrd')
+                ->whereIn('id', $document->lines->pluck('source_transaction_id')->filter()->unique())
+                ->orderBy('id')->get(['id', 'number']));
             foreach (['appliedPayments' => 'CustPymt', 'appliedCredits' => 'CustCred'] as $relation => $type) {
                 $document->load([$relation => fn ($query) => $query
-                    ->where('target_customer_id', $customer->netsuite_id)
+                    ->where('target_customer_id', $customer->id)
                     ->where('target_type', 'CustInvc')
                     ->whereHas('transaction', fn ($source) => $source->where('company_id', $customer->id)->where('type', $type))
-                    ->with('transaction:id,netsuite_id,type,number,transaction_date,currency_id,synced_at')
+                    ->with('transaction:id,type,number,transaction_date,currency_id,synced_at')
                     ->orderBy('transaction_id')->orderBy('target_line_id')->orderBy('id')]);
             }
         }

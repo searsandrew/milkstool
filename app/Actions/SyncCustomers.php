@@ -68,7 +68,7 @@ class SyncCustomers
     /** @param array<string, mixed> $customer */
     private function store(array $customer, bool $dryRun): string
     {
-        $company = Company::query()->firstOrNew(['netsuite_id' => $customer['id']]);
+        $company = Company::query()->firstOrNew(['id' => $customer['id']]);
         $active = $customer['isinactive'] === 'F';
 
         if (! $company->exists && ! $active) {

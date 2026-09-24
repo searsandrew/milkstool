@@ -33,7 +33,7 @@ class SyncSalesOrders
 
         try {
             $customer = $this->source->customer($customerId);
-            $company = Company::query()->updateOrCreate(['netsuite_id' => $customerId], [
+            $company = Company::query()->updateOrCreate(['id' => $customerId], [
                 'name' => $customer['name'],
                 'account_number' => $customer['account_number'] ?? null,
                 'sales_rep_id' => $customer['sales_rep_id'] ?? null,
@@ -61,8 +61,8 @@ class SyncSalesOrders
             foreach ($batches as $batch) {
                 $pending = [];
                 $existing = $resume
-                    ? $company->transactions()->where('type', 'SalesOrd')->whereIn('netsuite_id', $batch->pluck('id'))
-                        ->withCount('lines')->get()->keyBy('netsuite_id')
+                    ? $company->transactions()->where('type', 'SalesOrd')->whereIn('id', $batch->pluck('id'))
+                        ->withCount('lines')->get()->keyBy('id')
                     : collect();
 
                 foreach ($batch as $order) {
@@ -137,7 +137,7 @@ class SyncSalesOrders
 
     public function syncOrder(int $customerId, int $orderId): ?Transaction
     {
-        $company = Company::query()->where('netsuite_id', $customerId)->where('is_active', true)->firstOrFail();
+        $company = Company::query()->where('id', $customerId)->where('is_active', true)->firstOrFail();
         $lock = Cache::lock('netsuite-sales-orders:'.$customerId, 600);
         if (! $lock->get()) {
             throw new SalesOrderSyncInterrupted('A sales-order sync is already running for this customer.');
@@ -157,7 +157,7 @@ class SyncSalesOrders
             }
             $this->storeOrder($company, $order, $lines);
 
-            return $company->transactions()->where('netsuite_id', $orderId)->firstOrFail();
+            return $company->transactions()->where('id', $orderId)->firstOrFail();
         } finally {
             $lock->release();
         }
@@ -170,7 +170,7 @@ class SyncSalesOrders
     private function storeOrder(Company $company, array $order, array $lines): void
     {
         DB::transaction(function () use ($company, $order, $lines): void {
-            $transaction = Transaction::query()->firstOrNew(['netsuite_id' => $order['id']]);
+            $transaction = Transaction::query()->firstOrNew(['id' => $order['id']]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'SalesOrd')) {
                 throw new RuntimeException('The sales order is already associated with another customer or transaction type; reconciliation is required.');

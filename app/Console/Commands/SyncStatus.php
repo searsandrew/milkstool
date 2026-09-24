@@ -53,7 +53,7 @@ class SyncStatus extends Command
         }
 
         $now = now()->toImmutable();
-        $fields = ['id', 'netsuite_id', 'name', 'account_number', 'is_active', 'portal_last_active_at'];
+        $fields = ['id', 'name', 'account_number', 'is_active', 'portal_last_active_at'];
         foreach (['sync_started_at', 'synced_at', 'backfilled_at', 'next_sync_at', 'sync_error'] as $field) {
             if (! $isBalance || $field !== 'backfilled_at') {
                 $fields[] = $prefix.'_'.$field;
@@ -63,11 +63,11 @@ class SyncStatus extends Command
             $fields = [...$fields, 'sales_orders_checkpoint_at', 'sales_orders_full_synced_at'];
         }
         $companies = Company::query()->select($fields)
-            ->when($customerId !== null, fn (Builder $query) => $query->where('netsuite_id', $customerId))
+            ->when($customerId !== null, fn (Builder $query) => $query->where('id', $customerId))
             ->when($customerId === null && ! $this->option('include-inactive'), fn (Builder $query) => $query->where('is_active', true))
             ->when($isBalance, fn (Builder $query) => $query->selectRaw('CASE WHEN account_balance_snapshot IS NULL THEN 0 ELSE 1 END AS snapshot_count'),
                 fn (Builder $query) => $query->withCount(['transactions as '.$countKey => fn (Builder $query) => $query->where('type', $sourceType)]))
-            ->orderBy('netsuite_id')->get();
+            ->orderBy('id')->get();
 
         if ($customerId !== null && $companies->isEmpty()) {
             $this->error('Customer is not registered in Milkstool. Run customer discovery first.');
@@ -92,7 +92,7 @@ class SyncStatus extends Command
             };
 
             return [
-                'netsuite_id' => (int) $company->netsuite_id,
+                'netsuite_id' => (int) $company->id,
                 'account_number' => $company->account_number,
                 'name' => $company->name,
                 'active' => $company->is_active,

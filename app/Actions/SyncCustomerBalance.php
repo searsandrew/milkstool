@@ -16,7 +16,7 @@ class SyncCustomerBalance
     /** @return array<string, mixed> */
     public function handle(int $customerId): array
     {
-        $company = Company::query()->where('netsuite_id', $customerId)->first();
+        $company = Company::query()->where('id', $customerId)->first();
         if ($company === null) {
             throw new RuntimeException('Customer is not registered. Run milkstool:sync-customers first.');
         }

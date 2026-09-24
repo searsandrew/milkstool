@@ -24,7 +24,7 @@ function fakeControlTotals(array $orderOverrides = [], array $lineOverrides = []
 }
 
 it('matches signed totals without mixing customers, document types, or currencies', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     $order = Transaction::factory()->for($company)->create();
     TransactionLine::factory()->for($order)->create();
     Transaction::factory()->for($company)->create(['type' => 'CustInvc']);
@@ -40,7 +40,7 @@ it('matches signed totals without mixing customers, document types, or currencie
 });
 
 it('reports monetary differences without modifying local data or sync timestamps', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_synced_at' => '2026-09-01 12:00:00']);
+    $company = Company::factory()->create(['id' => 16, 'sales_orders_synced_at' => '2026-09-01 12:00:00']);
     $order = Transaction::factory()->for($company)->create();
     TransactionLine::factory()->for($order)->create();
     fakeControlTotals(['total' => '100.00000001']);
@@ -52,7 +52,7 @@ it('reports monetary differences without modifying local data or sync timestamps
 });
 
 it('detects null quantities even when their summed value is unchanged', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     $order = Transaction::factory()->for($company)->create();
     TransactionLine::factory()->for($order)->create(['quantity' => null]);
     fakeControlTotals([], ['quantity' => '0']);
@@ -63,7 +63,7 @@ it('detects null quantities even when their summed value is unchanged', function
 });
 
 it('reports a currency present only in local data', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     $order = Transaction::factory()->for($company)->create(['currency_id' => 2]);
     TransactionLine::factory()->for($order)->create();
     fakeControlTotals();
@@ -75,7 +75,7 @@ it('reports a currency present only in local data', function () {
 });
 
 it('accepts an empty history on both sides', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))]);
 
@@ -83,7 +83,7 @@ it('accepts an empty history on both sides', function () {
 });
 
 it('rejects incomplete or malformed source totals', function (array $totals, bool $more) {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage($totals, $more))->push(sourcePage([]))]);
 
@@ -94,7 +94,7 @@ it('rejects incomplete or malformed source totals', function (array $totals, boo
 ]);
 
 it('refuses reconciliation while a sync is running', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Cache::lock('netsuite-sales-orders:16', 600)->get();
 
     $this->artisan('milkstool:reconcile-sales-orders', ['customer' => '16'])->assertFailed();
@@ -115,7 +115,7 @@ it('rejects an invalid customer identifier', function () {
 });
 
 it('reports NetSuite request failures without claiming a match', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response([], 403)]);
 
     $this->artisan('milkstool:reconcile-sales-orders', ['customer' => '16'])
@@ -123,7 +123,7 @@ it('reports NetSuite request failures without claiming a match', function () {
 });
 
 it('reports connection failures without claiming a match', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::failedConnection()]);
 
     $this->artisan('milkstool:reconcile-sales-orders', ['customer' => '16'])

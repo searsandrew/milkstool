@@ -9,8 +9,8 @@ beforeEach(function () {
 });
 
 it('marks a reconciled customer complete and skips it on subsequent runs', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    Company::factory()->create(['netsuite_id' => 17, 'is_active' => false]);
+    $company = Company::factory()->create(['id' => 16]);
+    Company::factory()->create(['id' => 17, 'is_active' => false]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([])))]);
 
@@ -21,8 +21,8 @@ it('marks a reconciled customer complete and skips it on subsequent runs', funct
 });
 
 it('stops before the next customer when import fails and leaves the failed customer resumable', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $next = Company::factory()->create(['netsuite_id' => 17]);
+    $company = Company::factory()->create(['id' => 16]);
+    $next = Company::factory()->create(['id' => 17]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response([], 403)]);
 
     $this->artisan('milkstool:backfill-credit-memos')->assertFailed();
@@ -34,8 +34,8 @@ it('stops before the next customer when import fails and leaves the failed custo
 });
 
 it('previews only the bounded batch in source ID order without contacting NetSuite', function () {
-    Company::factory()->create(['netsuite_id' => 17]);
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 17]);
+    Company::factory()->create(['id' => 16]);
 
     $this->artisan('milkstool:backfill-credit-memos', ['--limit' => '1', '--dry-run' => true])
         ->expectsOutput('Backfill customer 16')->doesntExpectOutput('Backfill customer 17')->assertSuccessful();

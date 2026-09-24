@@ -19,7 +19,7 @@ class PaymentReconciliation
      */
     public function compare(Company $company): array
     {
-        $source = $this->source->controlTotals((int) $company->netsuite_id);
+        $source = $this->source->controlTotals((int) $company->id);
         $localPayments = $company->transactions()->where('type', 'CustPymt')
             ->selectRaw('currency_id, COUNT(*) AS payment_count, COUNT(foreign_amount_paid) AS paid_count, COUNT(foreign_amount_unpaid) AS unpaid_count, COALESCE(SUM(foreign_amount_paid), 0) AS foreign_amount_paid, COALESCE(SUM(foreign_amount_unpaid), 0) AS foreign_amount_unpaid, SUM(total) AS total, SUM(foreign_total) AS foreign_total')
             ->groupBy('currency_id')->toBase()->get()->keyBy('currency_id');
@@ -28,7 +28,7 @@ class PaymentReconciliation
             ->where('transactions.company_id', $company->id)->where('transactions.type', 'CustPymt')
             ->selectRaw('transactions.currency_id, COUNT(*) AS line_count, COUNT(quantity) AS quantity_count, COUNT(amount) AS amount_count, COALESCE(SUM(quantity), 0) AS quantity, COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(CASE WHEN is_mainline = 0 THEN amount ELSE 0 END), 0) AS detail_amount')
             ->groupBy('transactions.currency_id')->toBase()->get()->keyBy('currency_id');
-        $sourceApplications = collect($this->applications->controlTotals((int) $company->netsuite_id))->keyBy('currency_id');
+        $sourceApplications = collect($this->applications->controlTotals((int) $company->id))->keyBy('currency_id');
         $localApplications = PaymentApplication::query()
             ->join('transactions', 'transactions.id', '=', 'payment_applications.transaction_id')
             ->where('transactions.company_id', $company->id)->where('transactions.type', 'CustPymt')

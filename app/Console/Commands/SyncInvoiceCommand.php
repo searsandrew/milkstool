@@ -48,7 +48,7 @@ class SyncInvoiceCommand extends Command
             return self::FAILURE;
         }
 
-        $this->info('Invoice '.$invoice->netsuite_id.' imported with '.$invoice->lines()->count().' lines.');
+        $this->info('Invoice '.$invoice->id.' imported with '.$invoice->lines()->count().' lines.');
         $this->line('Invoice currency ID: '.$invoice->currency_id.'; total: '.$invoice->foreign_total
             .'; paid: '.($invoice->foreign_amount_paid ?? 'unknown').'; unpaid: '.($invoice->foreign_amount_unpaid ?? 'unknown').'.');
         $this->line('Single-invoice snapshot only; customer-wide invoice freshness and account balance are not established.');

@@ -11,7 +11,7 @@ class CompanyFactory extends Factory
     public function definition(): array
     {
         return [
-            'netsuite_id' => fake()->unique()->numberBetween(1, 1000000),
+            'id' => fake()->unique()->numberBetween(1, 1000000),
             'account_number' => fake()->unique()->numerify('ACCT-#####'),
             'name' => fake()->company(),
             'sales_rep_id' => 974,

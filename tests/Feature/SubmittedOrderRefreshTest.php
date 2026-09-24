@@ -16,7 +16,7 @@ use Laravel\Sanctum\Sanctum;
 beforeEach(function () {
     fakeNetSuiteConfiguration();
     $this->freezeSecond();
-    $this->company = Company::factory()->create(['netsuite_id' => 16]);
+    $this->company = Company::factory()->create(['id' => 16]);
 });
 
 it('requires authentication an explicit refresh permission and a customer grant', function () {
@@ -48,7 +48,7 @@ it('rejects inactive customers and known documents belonging to another customer
         $this->company->forceFill(['is_active' => false])->save();
     } else {
         $owner = $case === 'foreign' ? Company::factory()->create() : $this->company;
-        Transaction::factory()->for($owner)->create(['netsuite_id' => 101, 'type' => $case === 'foreign' ? 'SalesOrd' : 'CustInvc']);
+        Transaction::factory()->for($owner)->create(['id' => 101, 'type' => $case === 'foreign' ? 'SalesOrd' : 'CustInvc']);
     }
 
     $this->postJson('/api/v1/customers/16/order-refreshes', ['sales_order_id' => 101])->assertStatus($case === 'inactive' ? 409 : 404);
@@ -77,7 +77,7 @@ it('retries a not yet visible order then imports it without advancing history ch
     Queue::connection('netsuite')->pop('sales-orders')->fire();
 
     $this->assertDatabaseCount('transaction_lines', 1);
-    expect(Transaction::query()->sole()->netsuite_id)->toBe(101);
+    expect(Transaction::query()->sole()->id)->toBe(101);
     expect($this->company->refresh()->sales_orders_synced_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 12:00:00');
     expect($this->company->sales_orders_checkpoint_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 11:58:00');
     $this->assertDatabaseHas('jobs', ['queue' => 'balances']);
@@ -98,7 +98,7 @@ it('stops polling when the fixed retry window expires', function () {
 });
 
 it('retains stored data and retries when the source order changes during import', function () {
-    $existing = Transaction::factory()->for($this->company)->create(['netsuite_id' => 101]);
+    $existing = Transaction::factory()->for($this->company)->create(['id' => 101]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceOrder()]))->push(sourcePage([sourceLine()]))->push(sourcePage([sourceOrder(['total' => '999'])]))]);
 
@@ -109,7 +109,7 @@ it('retains stored data and retries when the source order changes during import'
 });
 
 it('preserves source ownership and stored document type boundaries', function (bool $wrongSource) {
-    Transaction::factory()->for($this->company)->create(['netsuite_id' => 101, 'type' => 'CustInvc']);
+    Transaction::factory()->for($this->company)->create(['id' => 101, 'type' => 'CustInvc']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceOrder(['customer_id' => $wrongSource ? '17' : '16'])]))
         ->push(sourcePage([sourceLine()]))->push(sourcePage([sourceOrder()]))]);

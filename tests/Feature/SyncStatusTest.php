@@ -23,13 +23,13 @@ function syncStatusReport(array $options = []): array
 
 it('reports current, due, failed, never-synced and unfinished customers without mutating or contacting NetSuite', function () {
     $this->freezeSecond();
-    $current = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_synced_at' => now()->subHour(),
+    $current = Company::factory()->create(['id' => 16, 'sales_orders_synced_at' => now()->subHour(),
         'sales_orders_next_sync_at' => now()->addHours(5), 'sales_orders_backfilled_at' => now()->subDay(), 'raw_payload' => ['private' => 'excluded']]);
-    Company::factory()->create(['netsuite_id' => 17, 'sales_orders_synced_at' => now()->subHours(6)]);
-    Company::factory()->create(['netsuite_id' => 18, 'sales_orders_sync_error' => 'Import failed.']);
-    Company::factory()->create(['netsuite_id' => 19]);
-    Company::factory()->create(['netsuite_id' => 20, 'sales_orders_sync_started_at' => now()->subMinutes(2), 'sales_orders_synced_at' => now()->subHour()]);
-    Company::factory()->create(['netsuite_id' => 21, 'is_active' => false]);
+    Company::factory()->create(['id' => 17, 'sales_orders_synced_at' => now()->subHours(6)]);
+    Company::factory()->create(['id' => 18, 'sales_orders_sync_error' => 'Import failed.']);
+    Company::factory()->create(['id' => 19]);
+    Company::factory()->create(['id' => 20, 'sales_orders_sync_started_at' => now()->subMinutes(2), 'sales_orders_synced_at' => now()->subHour()]);
+    Company::factory()->create(['id' => 21, 'is_active' => false]);
     Transaction::factory()->for($current)->create();
     Transaction::factory()->for($current)->create(['type' => 'CustInvc']);
     $before = $current->refresh()->getAttributes();
@@ -48,9 +48,9 @@ it('reports current, due, failed, never-synced and unfinished customers without 
 
 it('includes pending backfills in attention even when the latest sync is current', function () {
     $this->freezeSecond();
-    Company::factory()->create(['netsuite_id' => 16, 'sales_orders_synced_at' => now(), 'sales_orders_next_sync_at' => now()->addHours(6)]);
-    Company::factory()->create(['netsuite_id' => 17, 'sales_orders_synced_at' => now(), 'sales_orders_next_sync_at' => now()->addHours(6), 'sales_orders_backfilled_at' => now()]);
-    Company::factory()->create(['netsuite_id' => 18, 'is_active' => false, 'sales_orders_sync_error' => 'Old error']);
+    Company::factory()->create(['id' => 16, 'sales_orders_synced_at' => now(), 'sales_orders_next_sync_at' => now()->addHours(6)]);
+    Company::factory()->create(['id' => 17, 'sales_orders_synced_at' => now(), 'sales_orders_next_sync_at' => now()->addHours(6), 'sales_orders_backfilled_at' => now()]);
+    Company::factory()->create(['id' => 18, 'is_active' => false, 'sales_orders_sync_error' => 'Old error']);
 
     $report = syncStatusReport(['--attention' => true, '--include-inactive' => true]);
 
@@ -60,7 +60,7 @@ it('includes pending backfills in attention even when the latest sync is current
 });
 
 it('shows an inactive customer when explicitly requested and includes timestamp details in the table view', function () {
-    Company::factory()->create(['netsuite_id' => 16, 'is_active' => false,
+    Company::factory()->create(['id' => 16, 'is_active' => false,
         'sales_orders_checkpoint_at' => '2026-09-21 12:00:00', 'sales_orders_backfilled_at' => '2026-09-21 12:02:00']);
 
     $report = syncStatusReport(['--customer' => '16']);
@@ -74,7 +74,7 @@ it('shows an inactive customer when explicitly requested and includes timestamp 
 
 it('honors a due time earlier than the normal baseline and does not mark equal start and success times unfinished', function () {
     $this->freezeSecond();
-    Company::factory()->create(['netsuite_id' => 16, 'sales_orders_sync_started_at' => now(),
+    Company::factory()->create(['id' => 16, 'sales_orders_sync_started_at' => now(),
         'sales_orders_synced_at' => now(), 'sales_orders_next_sync_at' => now()]);
 
     $report = syncStatusReport();
@@ -146,7 +146,7 @@ it('rejects invalid or unregistered customer IDs', function (string $id) {
 })->with(['0', '-1', '16 OR 1=1', '999999']);
 
 it('reports billing freshness independently from sales orders', function (string $type, string $prefix, string $sourceType, string $countKey) {
-    $company = Company::factory()->create(['netsuite_id' => 16, $prefix.'_synced_at' => now(),
+    $company = Company::factory()->create(['id' => 16, $prefix.'_synced_at' => now(),
         $prefix.'_backfilled_at' => now(), $prefix.'_next_sync_at' => now()->addHours(6)]);
     Transaction::factory()->for($company)->create(['type' => $sourceType]);
     Transaction::factory()->for($company)->create(['type' => 'SalesOrd']);
@@ -173,12 +173,12 @@ it('rejects unsupported status types', function () {
 
 it('reports balance snapshot coverage and freshness without exposing or summing financial amounts', function () {
     $this->freezeSecond();
-    Company::factory()->create(['netsuite_id' => 16, 'balance_synced_at' => now(), 'account_balance_snapshot' => ['balance' => '123456.12345678']]);
-    Company::factory()->create(['netsuite_id' => 17]);
-    Company::factory()->create(['netsuite_id' => 18, 'balance_synced_at' => now()->subDay(), 'account_balance_snapshot' => ['balance' => '0.00000000']]);
-    Company::factory()->create(['netsuite_id' => 19, 'balance_sync_started_at' => now()]);
-    Company::factory()->create(['netsuite_id' => 20, 'balance_sync_error' => 'Balance refresh failed.']);
-    Company::factory()->create(['netsuite_id' => 21, 'balance_synced_at' => now()]);
+    Company::factory()->create(['id' => 16, 'balance_synced_at' => now(), 'account_balance_snapshot' => ['balance' => '123456.12345678']]);
+    Company::factory()->create(['id' => 17]);
+    Company::factory()->create(['id' => 18, 'balance_synced_at' => now()->subDay(), 'account_balance_snapshot' => ['balance' => '0.00000000']]);
+    Company::factory()->create(['id' => 19, 'balance_sync_started_at' => now()]);
+    Company::factory()->create(['id' => 20, 'balance_sync_error' => 'Balance refresh failed.']);
+    Company::factory()->create(['id' => 21, 'balance_synced_at' => now()]);
 
     $report = syncStatusReport(['--type' => 'balances']);
 

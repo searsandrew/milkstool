@@ -47,7 +47,7 @@ function creditMemoLineTotals(array $overrides = []): array
 }
 
 it('batches creditMemos and reconciles currencies without mixing sales orders or other customers', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     Transaction::factory()->for($company)->create();
     Transaction::factory()->create(['type' => 'CustCred']);
     $second = sourceCreditMemo(['id' => '1348', 'currency_id' => '2']);
@@ -70,8 +70,8 @@ it('batches creditMemos and reconciles currencies without mixing sales orders or
 });
 
 it('refreshes unchanged modification timestamps and payment snapshots without duplicating creditMemos', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $existing = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustCred',
+    $company = Company::factory()->create(['id' => 16]);
+    $existing = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustCred',
         'netsuite_updated_at' => '2026-09-01 12:00:00', 'foreign_amount_paid' => '0', 'foreign_amount_unpaid' => '25.12345678']);
     TransactionLine::factory()->for($existing)->create(['netsuite_line_id' => 9]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
@@ -88,7 +88,7 @@ it('refreshes unchanged modification timestamps and payment snapshots without du
 });
 
 it('preserves last success when reconciliation fails', function (array $header, array $lines) {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'credit_memos_synced_at' => '2026-09-01 12:00:00']);
+    $company = Company::factory()->create(['id' => 16, 'credit_memos_synced_at' => '2026-09-01 12:00:00']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([sourceCreditMemoLine()]))
         ->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([creditMemoHeaderTotals($header)]))->push(sourcePage([creditMemoLineTotals($lines)])))]);
@@ -107,7 +107,7 @@ it('preserves last success when reconciliation fails', function (array $header, 
 ]);
 
 it('keeps missing source creditMemos and rejects a false successful sync', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     $missing = Transaction::factory()->for($company)->create(['type' => 'CustCred']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([])))]);
@@ -119,7 +119,7 @@ it('keeps missing source creditMemos and rejects a false successful sync', funct
 });
 
 it('records a reconciled empty history only after validating the customer', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([])))]);
 
@@ -130,8 +130,8 @@ it('records a reconciled empty history only after validating the customer', func
 });
 
 it('does not replace old lines when a batch line page fails', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $creditMemo = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustCred']);
+    $company = Company::factory()->create(['id' => 16]);
+    $creditMemo = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustCred']);
     $line = TransactionLine::factory()->for($creditMemo)->create();
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))
@@ -145,7 +145,7 @@ it('does not replace old lines when a batch line page fails', function () {
 });
 
 it('rejects changed or missing verification headers before saving a batch', function (array $verification) {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([sourceCreditMemoLine()]))
         ->push(sourcePage($verification)))]);
@@ -169,7 +169,7 @@ it('paginates customer creditMemos and refuses duplicate header pages', function
 })->with([true, false]);
 
 it('rejects truncated reconciliation totals', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))
         ->push(sourcePage([creditMemoHeaderTotals()], true))->push(sourcePage([])))]);
@@ -180,7 +180,7 @@ it('rejects truncated reconciliation totals', function () {
 });
 
 it('shares the customer credit memo lock and does not change sync state on contention', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     Cache::lock('netsuite-credit-memos:16', 600)->get();
 
     $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
@@ -190,7 +190,7 @@ it('shares the customer credit memo lock and does not change sync state on conte
 });
 
 it('keeps completed batches but leaves freshness unchanged when a later page fails', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'credit_memos_synced_at' => '2026-09-01 12:00:00']);
+    $company = Company::factory()->create(['id' => 16, 'credit_memos_synced_at' => '2026-09-01 12:00:00']);
     $creditMemos = array_map(fn (int $id): array => sourceCreditMemo(['id' => (string) $id]), range(1347, 1396));
     $lines = array_map(fn (int $id): array => sourceCreditMemoLine(['transaction_id' => (string) $id]), range(1347, 1396));
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
@@ -208,7 +208,7 @@ it('keeps completed batches but leaves freshness unchanged when a later page fai
 });
 
 it('reconciles unknown paid amounts without treating null as a known zero', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     $creditMemo = sourceCreditMemo(['foreign_amount_paid' => null, 'foreign_amount_unpaid' => null]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([$creditMemo]))->push(sourcePage([sourceCreditMemoLine()]))
@@ -228,7 +228,7 @@ it('rejects invalid or unregistered customers without contacting NetSuite', func
 })->with(['0', '16 OR 1=1', '16']);
 
 it('preserves a non-item credit and its signed amount without inventing a quantity', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     $line = sourceCreditMemoLine(['item_id' => null, 'item_number' => null, 'quantity' => null, 'source_transaction_id' => null]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo()]))->push(sourcePage([$line]))
@@ -242,8 +242,8 @@ it('preserves a non-item credit and its signed amount without inventing a quanti
 });
 
 it('refuses to overwrite another customer or transaction type', function (bool $otherCustomer) {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $existing = Transaction::factory()->create(['netsuite_id' => 1347,
+    $company = Company::factory()->create(['id' => 16]);
+    $existing = Transaction::factory()->create(['id' => 1347,
         'company_id' => $otherCustomer ? Company::factory()->create()->id : $company->id,
         'type' => $otherCustomer ? 'CustCred' : 'CustInvc']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
@@ -258,7 +258,7 @@ it('refuses to overwrite another customer or transaction type', function (bool $
 })->with([true, false]);
 
 it('rejects foreign source headers and lines before saving credit memos', function (array $header, array $line) {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceCreditMemo($header)]))
         ->push(sourcePage([sourceCreditMemoLine($line)])))]);

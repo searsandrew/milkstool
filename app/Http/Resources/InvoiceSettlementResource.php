@@ -14,7 +14,7 @@ class InvoiceSettlementResource extends JsonResource
         $source = $this->transaction;
 
         return [
-            'source_netsuite_id' => (int) $source->netsuite_id,
+            'source_netsuite_id' => (int) $source->id,
             'source_type' => $source->type,
             'source_number' => $source->number,
             'source_date' => $source->transaction_date?->format('Y-m-d'),

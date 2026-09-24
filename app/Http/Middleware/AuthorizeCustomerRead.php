@@ -12,7 +12,7 @@ class AuthorizeCustomerRead
     public function handle(Request $request, Closure $next): Response
     {
         $customer = $request->route('customer');
-        $id = $customer instanceof Company ? $customer->netsuite_id : $customer;
+        $id = $customer instanceof Company ? $customer->id : $customer;
         abort_unless($request->user()?->tokenCan('customers:all') || $request->user()?->tokenCan('customer:'.$id), 403);
 
         $response = $next($request);

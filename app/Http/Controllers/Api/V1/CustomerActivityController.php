@@ -21,7 +21,7 @@ class CustomerActivityController extends Controller
         foreach (['balance' => RefreshCustomerBalance::class, 'sales_orders' => RefreshSalesOrders::class,
             'invoices' => RefreshInvoices::class, 'credit_memos' => RefreshCreditMemos::class, 'payments' => RefreshPayments::class] as $prefix => $job) {
             if (Company::query()->whereKey($customer->id)->dueForRefresh($prefix)->exists()) {
-                $job::dispatch((int) $customer->netsuite_id);
+                $job::dispatch((int) $customer->id);
                 $requested[] = $prefix;
             }
         }

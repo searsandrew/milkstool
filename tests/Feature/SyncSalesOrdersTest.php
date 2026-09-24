@@ -46,8 +46,8 @@ it('reimports without duplicates and removes lines no longer present in a comple
 });
 
 it('retains the previous order and successful timestamp when a later line page fails', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_synced_at' => '2026-08-15 12:00:00']);
-    $order = Transaction::factory()->for($company)->create(['netsuite_id' => 101]);
+    $company = Company::factory()->create(['id' => 16, 'sales_orders_synced_at' => '2026-08-15 12:00:00']);
+    $order = Transaction::factory()->for($company)->create(['id' => 101]);
     $line = TransactionLine::factory()->for($order)->create(['netsuite_line_id' => 8]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceOrder()]))
@@ -76,8 +76,8 @@ it('refuses an order that changed while its lines were being fetched', function 
 });
 
 it('does not move an existing order between customers automatically', function () {
-    $other = Company::factory()->create(['netsuite_id' => 17]);
-    $order = Transaction::factory()->for($other)->create(['netsuite_id' => 101]);
+    $other = Company::factory()->create(['id' => 17]);
+    $order = Transaction::factory()->for($other)->create(['id' => 101]);
     fakeSalesOrderImport([sourceLine()]);
 
     $this->artisan('milkstool:sync-sales-orders', ['customer' => '16'])->assertFailed();
@@ -87,8 +87,8 @@ it('does not move an existing order between customers automatically', function (
 });
 
 it('retains missing source orders and reports a reconciliation mismatch', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $order = Transaction::factory()->for($company)->create(['netsuite_id' => 100]);
+    $company = Company::factory()->create(['id' => 16]);
+    $order = Transaction::factory()->for($company)->create(['id' => 100]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))]);
 

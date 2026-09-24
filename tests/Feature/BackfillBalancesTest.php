@@ -10,10 +10,10 @@ beforeEach(function () {
 });
 
 it('imports missing active snapshots in bounded source order and skips completed customers on resume', function () {
-    $later = Company::factory()->create(['netsuite_id' => 17]);
-    $first = Company::factory()->create(['netsuite_id' => 16]);
-    Company::factory()->create(['netsuite_id' => 18, 'is_active' => false]);
-    Company::factory()->create(['netsuite_id' => 15, 'balance_synced_at' => now()->subDay(), 'account_balance_snapshot' => ['balance' => '0.00000000']]);
+    $later = Company::factory()->create(['id' => 17]);
+    $first = Company::factory()->create(['id' => 16]);
+    Company::factory()->create(['id' => 18, 'is_active' => false]);
+    Company::factory()->create(['id' => 15, 'balance_synced_at' => now()->subDay(), 'account_balance_snapshot' => ['balance' => '0.00000000']]);
     Http::fake([
         'https://netsuite.example/services/rest/record/v1/customer/16*' => Http::response(['id' => '16', 'balance' => 0, 'overdueBalance' => 0, 'unbilledOrders' => 0]),
         'https://netsuite.example/services/rest/record/v1/customer/17*' => Http::response(['id' => '17', 'balance' => 25, 'overdueBalance' => 0, 'unbilledOrders' => 0]),
@@ -30,7 +30,7 @@ it('imports missing active snapshots in bounded source order and skips completed
 });
 
 it('repairs a missing snapshot even when its success timestamp exists', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'balance_synced_at' => now()]);
+    $company = Company::factory()->create(['id' => 16, 'balance_synced_at' => now()]);
     Http::fake(['https://netsuite.example/services/rest/record/v1/customer/16*' => Http::response(['id' => '16', 'balance' => 0, 'overdueBalance' => 0, 'unbilledOrders' => 0])]);
 
     $this->artisan('milkstool:backfill-balances')->assertSuccessful();
@@ -40,8 +40,8 @@ it('repairs a missing snapshot even when its success timestamp exists', function
 });
 
 it('stops at a failure and resumes from that customer while preserving previously completed snapshots', function () {
-    $first = Company::factory()->create(['netsuite_id' => 16]);
-    $next = Company::factory()->create(['netsuite_id' => 17]);
+    $first = Company::factory()->create(['id' => 16]);
+    $next = Company::factory()->create(['id' => 17]);
     Http::fake(['https://netsuite.example/services/rest/record/v1/customer/16*' => Http::response([], 403)]);
 
     $this->artisan('milkstool:backfill-balances')->assertFailed();
@@ -58,8 +58,8 @@ it('stops at a failure and resumes from that customer while preserving previousl
 });
 
 it('previews a bounded balance batch without contacting NetSuite or changing data', function () {
-    Company::factory()->create(['netsuite_id' => 17]);
-    $first = Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 17]);
+    $first = Company::factory()->create(['id' => 16]);
 
     $this->artisan('milkstool:backfill-balances', ['--limit' => '1', '--dry-run' => true])
         ->expectsOutput('Backfill customer 16')->doesntExpectOutput('Backfill customer 17')->assertSuccessful();

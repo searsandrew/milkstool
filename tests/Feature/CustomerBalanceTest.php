@@ -14,7 +14,7 @@ use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
     fakeNetSuiteConfiguration();
-    $this->company = Company::factory()->create(['netsuite_id' => 16]);
+    $this->company = Company::factory()->create(['id' => 16]);
 });
 
 /** @return array<string, mixed> */

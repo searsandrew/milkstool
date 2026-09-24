@@ -10,7 +10,7 @@ use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
     Http::preventStrayRequests();
-    $this->company = Company::factory()->create(['netsuite_id' => 16]);
+    $this->company = Company::factory()->create(['id' => 16]);
 });
 
 it('requires authentication on every customer endpoint', function (string $path) {
@@ -26,9 +26,9 @@ it('requires both read permission and the customer grant', function (array $abil
 
 it('paginates only the requested customer and excludes private payloads', function () {
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
-    Transaction::factory()->for($this->company)->create(['netsuite_id' => 100, 'transaction_date' => '2026-01-01', 'raw_payload' => ['secret' => 'private source data']]);
-    Transaction::factory()->for($this->company)->create(['netsuite_id' => 101, 'transaction_date' => '2026-01-01']);
-    Transaction::factory()->create(['netsuite_id' => 999]);
+    Transaction::factory()->for($this->company)->create(['id' => 100, 'transaction_date' => '2026-01-01', 'raw_payload' => ['secret' => 'private source data']]);
+    Transaction::factory()->for($this->company)->create(['id' => 101, 'transaction_date' => '2026-01-01']);
+    Transaction::factory()->create(['id' => 999]);
 
     $response = $this->getJson('/api/v1/customers/16/transactions?per_page=1');
 
@@ -42,10 +42,10 @@ it('paginates only the requested customer and excludes private payloads', functi
 
 it('returns decimal strings and ordered lines only for the owning customer', function () {
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customers:all']);
-    $invoice = Transaction::factory()->for($this->company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc', 'foreign_amount_unpaid' => '123.12345678']);
+    $invoice = Transaction::factory()->for($this->company)->create(['id' => 1347, 'type' => 'CustInvc', 'foreign_amount_unpaid' => '123.12345678']);
     TransactionLine::factory()->for($invoice)->create(['netsuite_line_id' => 2, 'quantity' => null, 'raw_payload' => ['private' => 'hidden']]);
     TransactionLine::factory()->for($invoice)->create(['netsuite_line_id' => 0, 'quantity' => '-2.50000000']);
-    Company::factory()->create(['netsuite_id' => 17]);
+    Company::factory()->create(['id' => 17]);
 
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
         ->assertJsonPath('data.foreign_amount_unpaid', '123.12345678')
@@ -116,7 +116,7 @@ it('rejects malformed token customer grants', function (string $customer) {
 it('uses real bearer token grants and rejects a revoked token', function () {
     $token = ApiClient::factory()->create()->createToken('portal', ['transactions:read', 'customer:16'], now()->addDay());
     $this->withToken($token->plainTextToken)->getJson('/api/v1/customers/16/transactions')->assertOk();
-    Company::factory()->create(['netsuite_id' => 17]);
+    Company::factory()->create(['id' => 17]);
     $this->withToken($token->plainTextToken)->getJson('/api/v1/customers/17/transactions')->assertForbidden();
     $token->accessToken->delete();
     app('auth')->forgetGuards();
@@ -134,9 +134,9 @@ it('marks old and interrupted invoice histories as requiring refresh', function 
 it('sorts the complete customer history before pagination with stable ties', function (string $sort, string $column, array $values) {
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
     foreach ($values as $index => $value) {
-        Transaction::factory()->for($this->company)->create(['netsuite_id' => 100 + $index, 'type' => 'CustInvc', $column => $value]);
+        Transaction::factory()->for($this->company)->create(['id' => 100 + $index, 'type' => 'CustInvc', $column => $value]);
     }
-    Transaction::factory()->create(['netsuite_id' => 999, 'type' => 'CustInvc', $column => $values[1]]);
+    Transaction::factory()->create(['id' => 999, 'type' => 'CustInvc', $column => $values[1]]);
     foreach (['asc' => [101, 102, 100], 'desc' => [100, 102, 101]] as $direction => $ids) {
         foreach ($ids as $index => $id) {
             $this->getJson('/api/v1/customers/16/transactions?'.http_build_query([
@@ -154,8 +154,8 @@ it('sorts the complete customer history before pagination with stable ties', fun
 
 it('combines literal search with sorting pagination type and customer scope', function (string $type) {
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
-    Transaction::factory()->for($this->company)->create(['netsuite_id' => 100, 'type' => $type, 'number' => 'DOC-50%_!', 'foreign_total' => '20']);
-    Transaction::factory()->for($this->company)->create(['netsuite_id' => 101, 'type' => $type, 'number' => 'OTHER', 'purchase_order_number' => 'PO-50%_!', 'foreign_total' => '9']);
+    Transaction::factory()->for($this->company)->create(['id' => 100, 'type' => $type, 'number' => 'DOC-50%_!', 'foreign_total' => '20']);
+    Transaction::factory()->for($this->company)->create(['id' => 101, 'type' => $type, 'number' => 'OTHER', 'purchase_order_number' => 'PO-50%_!', 'foreign_total' => '9']);
     Transaction::factory()->for($this->company)->create(['type' => $type, 'number' => 'DOC-50000']);
     Transaction::factory()->for($this->company)->create(['type' => 'SalesOrd', 'purchase_order_number' => 'PO-50%_!']);
     Transaction::factory()->create(['type' => $type, 'purchase_order_number' => 'PO-50%_!']);

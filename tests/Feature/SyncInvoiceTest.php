@@ -12,13 +12,13 @@ beforeEach(function () {
 });
 
 it('imports an invoice with exact monetary fields, nullable lines and source references without touching order freshness', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_synced_at' => '2026-09-01 12:00:00']);
-    $order = Transaction::factory()->for($company)->create(['netsuite_id' => 101]);
+    $company = Company::factory()->create(['id' => 16, 'sales_orders_synced_at' => '2026-09-01 12:00:00']);
+    $order = Transaction::factory()->for($company)->create(['id' => 101]);
     fakeSingleInvoice([sourceInvoiceLine(['line_id' => '0', 'mainline' => 'T', 'quantity' => null]), sourceInvoiceLine()]);
 
     $this->artisan('milkstool:sync-invoice', ['customer' => '16', 'invoice' => '1347'])->assertSuccessful();
 
-    $invoice = Transaction::query()->where('netsuite_id', 1347)->sole();
+    $invoice = Transaction::query()->where('id', 1347)->sole();
     expect($invoice->type)->toBe('CustInvc');
     expect($invoice->foreign_amount_paid)->toBe('20.00000000');
     expect($invoice->foreign_amount_unpaid)->toBe('5.12345678');
@@ -32,7 +32,7 @@ it('imports an invoice with exact monetary fields, nullable lines and source ref
 });
 
 it('updates payment snapshots and removes absent lines only after a complete reimport', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     $paid = sourceInvoice(['foreign_amount_paid' => '25.12345678', 'foreign_amount_unpaid' => '0', 'due_date' => null]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine(), sourceInvoiceLine(['line_id' => '2'])]))->push(sourcePage([sourceInvoice()]))
@@ -49,8 +49,8 @@ it('updates payment snapshots and removes absent lines only after a complete rei
 });
 
 it('retains the existing invoice when a later line page fails', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $invoice = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc']);
+    $company = Company::factory()->create(['id' => 16]);
+    $invoice = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustInvc']);
     $line = TransactionLine::factory()->for($invoice)->create();
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine()], true))->push([], 503)]);
@@ -64,7 +64,7 @@ it('retains the existing invoice when a later line page fails', function () {
 });
 
 it('refuses a payment change during retrieval even if the source modification timestamp is unchanged', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine()]))
         ->push(sourcePage([sourceInvoice(['foreign_amount_unpaid' => '0'])]))]);
@@ -76,7 +76,7 @@ it('refuses a payment change during retrieval even if the source modification ti
 });
 
 it('refuses malformed or foreign invoice headers before writing', function (array $overrides) {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([sourceInvoice($overrides)]))]);
 
     $this->artisan('milkstool:sync-invoice', ['customer' => '16', 'invoice' => '1347'])->assertFailed();
@@ -86,7 +86,7 @@ it('refuses malformed or foreign invoice headers before writing', function (arra
 })->with([[['customer_id' => '17']], [['id' => '1348']], [['type' => 'SalesOrd']], [['foreign_amount_unpaid' => 'invalid']]]);
 
 it('refuses empty, foreign or duplicate lines without persisting an invoice', function (array $lines) {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceInvoice()]))->push(sourcePage($lines))]);
 
@@ -101,9 +101,9 @@ it('refuses empty, foreign or duplicate lines without persisting an invoice', fu
 ]);
 
 it('does not overwrite another customer or transaction type', function (bool $otherCustomer) {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $owner = $otherCustomer ? Company::factory()->create(['netsuite_id' => 17]) : $company;
-    $existing = Transaction::factory()->for($owner)->create(['netsuite_id' => 1347, 'type' => $otherCustomer ? 'CustInvc' : 'SalesOrd']);
+    $company = Company::factory()->create(['id' => 16]);
+    $owner = $otherCustomer ? Company::factory()->create(['id' => 17]) : $company;
+    $existing = Transaction::factory()->for($owner)->create(['id' => 1347, 'type' => $otherCustomer ? 'CustInvc' : 'SalesOrd']);
     fakeSingleInvoice([sourceInvoiceLine()]);
 
     $this->artisan('milkstool:sync-invoice', ['customer' => '16', 'invoice' => '1347'])->assertFailed();
@@ -114,7 +114,7 @@ it('does not overwrite another customer or transaction type', function (bool $ot
 })->with([true, false]);
 
 it('paginates invoice lines and preserves unknown monetary amounts as null', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     $header = sourceInvoice(['foreign_amount_paid' => null, 'foreign_amount_unpaid' => null]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([$header]))->push(sourcePage([sourceInvoiceLine(['line_id' => '0'])], true))
@@ -129,7 +129,7 @@ it('paginates invoice lines and preserves unknown monetary amounts as null', fun
 
 it('refuses concurrent imports and unregistered customers before contacting NetSuite', function (bool $registered) {
     if ($registered) {
-        Company::factory()->create(['netsuite_id' => 16]);
+        Company::factory()->create(['id' => 16]);
         Cache::lock('netsuite-invoices:16', 600)->get();
     }
 

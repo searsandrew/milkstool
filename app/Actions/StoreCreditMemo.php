@@ -21,7 +21,7 @@ class StoreCreditMemo
         $creditMemoId = (int) $creditMemo['id'];
 
         return DB::transaction(function () use ($company, $creditMemoId, $creditMemo, $lines, $applications): Transaction {
-            $transaction = Transaction::query()->firstOrNew(['netsuite_id' => $creditMemoId]);
+            $transaction = Transaction::query()->firstOrNew(['id' => $creditMemoId]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'CustCred')) {
                 throw new RuntimeException('This transaction belongs to another customer or transaction type.');

@@ -15,7 +15,7 @@ use Laravel\Sanctum\Sanctum;
 beforeEach(function () {
     fakeNetSuiteConfiguration();
     $this->freezeSecond();
-    $this->company = Company::factory()->create(['netsuite_id' => 16]);
+    $this->company = Company::factory()->create(['id' => 16]);
 });
 
 it('requires a customer grant and explicit activity permission', function () {

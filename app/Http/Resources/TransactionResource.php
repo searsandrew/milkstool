@@ -11,7 +11,7 @@ class TransactionResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'netsuite_id' => (int) $this->netsuite_id,
+            'netsuite_id' => (int) $this->id,
             'type' => $this->type,
             'number' => $this->number,
             'purchase_order_number' => $this->purchase_order_number,
@@ -35,6 +35,7 @@ class TransactionResource extends JsonResource
                 ...array_intersect_key($this->invoice_details, array_flip(['billing_address', 'shipping_address', 'terms_id', 'terms_name', 'ship_date', 'shipping_method'])),
                 'synced_at' => $this->invoice_details_synced_at?->utc()->toIso8601String(),
             ]),
+            'sales_orders' => $this->whenLoaded('salesOrders', fn () => $this->salesOrders->map(fn ($order): array => ['id' => (int) $order->id, 'number' => $order->number])->values()),
             'lines' => TransactionLineResource::collection($this->whenLoaded('lines')),
         ];
     }

@@ -17,15 +17,15 @@ class DispatchCreditMemoRefreshes extends Command
         $count = 0;
         $companies = Company::query()->where('is_active', true)
             ->dueForRefresh('credit_memos')
-            ->select(['id', 'netsuite_id'])->lazyById(100);
+            ->select(['id'])->lazyById(100);
 
         foreach ($companies as $company) {
             $count++;
 
             if ($this->option('dry-run')) {
-                $this->line('Due: NetSuite customer '.$company->netsuite_id);
+                $this->line('Due: NetSuite customer '.$company->id);
             } else {
-                RefreshCreditMemos::dispatch((int) $company->netsuite_id);
+                RefreshCreditMemos::dispatch((int) $company->id);
             }
         }
 

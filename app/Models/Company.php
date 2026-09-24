@@ -11,11 +11,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use InvalidArgumentException;
 
-#[Fillable(['netsuite_id', 'account_number', 'name', 'sales_rep_id', 'is_active', 'netsuite_updated_at', 'raw_payload'])]
+#[Fillable(['id', 'account_number', 'name', 'sales_rep_id', 'is_active', 'netsuite_updated_at', 'raw_payload'])]
 class Company extends Model
 {
     /** @use HasFactory<CompanyFactory> */
     use HasFactory;
+
+    public $incrementing = false;
 
     /** @return array<string, string> */
     protected function casts(): array

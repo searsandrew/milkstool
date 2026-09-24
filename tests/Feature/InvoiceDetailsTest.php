@@ -14,7 +14,7 @@ beforeEach(function () {
 });
 
 it('mirrors invoice addresses and terms and exposes them only on authorized invoice details', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     fakeSingleInvoice([sourceInvoiceLine()], ['billing_address' => "Historical Billing\n123 Old Street", 'shipping_address' => 'Original ship-to',
         'terms_id' => '2', 'terms_name' => 'Net 30', 'ship_date' => '2026-08-01', 'shipping_method' => 'Ground']);
     $invoice = app(SyncInvoice::class)->handle(16, 1347);
@@ -34,8 +34,8 @@ it('mirrors invoice addresses and terms and exposes them only on authorized invo
 });
 
 it('distinguishes legacy invoices from synced invoices whose optional details are absent', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $invoice = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc']);
+    $company = Company::factory()->create(['id' => 16]);
+    $invoice = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustInvc']);
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertJsonPath('data.invoice_details', null);
     $invoice->forceFill(['invoice_details' => ['billing_address' => 'Old address']])->save();
@@ -50,8 +50,8 @@ it('distinguishes legacy invoices from synced invoices whose optional details ar
 });
 
 it('backfills only missing invoice headers without changing lines balances or financial freshness and skips completed work', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'invoices_synced_at' => '2026-09-01 12:00:00']);
-    $invoice = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc', 'foreign_amount_unpaid' => '99', 'synced_at' => '2026-09-01 12:00:00']);
+    $company = Company::factory()->create(['id' => 16, 'invoices_synced_at' => '2026-09-01 12:00:00']);
+    $invoice = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustInvc', 'foreign_amount_unpaid' => '99', 'synced_at' => '2026-09-01 12:00:00']);
     $line = TransactionLine::factory()->for($invoice)->create();
     Transaction::factory()->for($company)->create(['type' => 'CustCred']);
     Transaction::factory()->for($company)->create(['type' => 'CustInvc', 'invoice_details_synced_at' => now(), 'invoice_details' => ['terms_name' => 'Already imported']]);
@@ -70,8 +70,8 @@ it('backfills only missing invoice headers without changing lines balances or fi
 });
 
 it('leaves the batch resumable and releases locks when headers change or retrieval fails', function (bool $changed) {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $invoice = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc']);
+    $company = Company::factory()->create(['id' => 16]);
+    $invoice = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustInvc']);
     $sequence = Http::sequence()->push(sourcePage([sourceInvoice()]));
     if ($changed) {
         $sequence->push(sourcePage([sourceInvoice(['billing_address' => 'Changed address'])]));
@@ -93,7 +93,7 @@ it('leaves the batch resumable and releases locks when headers change or retriev
 
 it('previews bounded active customers without contacting NetSuite', function () {
     foreach ([[17, true], [16, true], [15, false]] as [$id, $active]) {
-        $company = Company::factory()->create(['netsuite_id' => $id, 'is_active' => $active]);
+        $company = Company::factory()->create(['id' => $id, 'is_active' => $active]);
         Transaction::factory()->for($company)->create(['type' => 'CustInvc']);
     }
 
@@ -104,7 +104,7 @@ it('previews bounded active customers without contacting NetSuite', function () 
 });
 
 it('respects backfill and customer invoice locks', function (string $key) {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     Transaction::factory()->for($company)->create(['type' => 'CustInvc']);
     $lock = Cache::lock($key, 600);
     $lock->get();
@@ -122,7 +122,7 @@ it('rejects invalid invoice detail batch limits', function (string $limit) {
 })->with(['0', '-1', '1001', 'invalid']);
 
 it('validates optional invoice display fields before persisting them', function (array $fields) {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([sourceInvoice($fields)]))]);
 
     $this->artisan('milkstool:sync-invoice', ['customer' => '16', 'invoice' => '1347'])->assertFailed();
@@ -131,10 +131,10 @@ it('validates optional invoice display fields before persisting them', function 
 })->with([[['terms_id' => '-1']], [['billing_address' => ['invalid']]], [['ship_date' => 'not-a-date']]]);
 
 it('resumes after a later batch fails without reloading completed invoices', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     $headers = [];
     for ($id = 1347; $id < 1398; $id++) {
-        Transaction::factory()->for($company)->create(['netsuite_id' => $id, 'type' => 'CustInvc']);
+        Transaction::factory()->for($company)->create(['id' => $id, 'type' => 'CustInvc']);
         $headers[] = sourceInvoice(['id' => (string) $id, 'terms_name' => 'Net 30']);
     }
     $first = array_slice($headers, 0, 50);
@@ -149,4 +149,26 @@ it('resumes after a later batch fails without reloading completed invoices', fun
 
     expect(Transaction::query()->whereNotNull('invoice_details_synced_at')->count())->toBe(51);
     Http::assertSentCount(5);
+});
+
+it('returns distinct source sales orders only from the invoices customer', function () {
+    Http::preventStrayRequests();
+    $company = Company::factory()->create(['id' => 16]);
+    $invoice = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustInvc']);
+    Transaction::factory()->for($company)->create(['id' => 200, 'type' => 'SalesOrd', 'number' => 'SO-200']);
+    Transaction::factory()->for($company)->create(['id' => 201, 'type' => 'SalesOrd', 'number' => 'SO-201']);
+    Transaction::factory()->create(['id' => 202, 'type' => 'SalesOrd', 'number' => 'OTHER-CUSTOMER']);
+    Transaction::factory()->for($company)->create(['id' => 203, 'type' => 'CustCred']);
+    foreach ([200, 200, 201, 202, 203, 999999, null] as $index => $source) {
+        TransactionLine::factory()->for($invoice)->create(['netsuite_line_id' => $index, 'source_transaction_id' => $source]);
+    }
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+
+    $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
+        ->assertJsonPath('data.sales_orders', [['id' => 200, 'number' => 'SO-200'], ['id' => 201, 'number' => 'SO-201']])
+        ->assertDontSee('OTHER-CUSTOMER');
+    $this->getJson('/api/v1/customers/16/transactions?type=CustInvc')->assertJsonMissingPath('data.0.sales_orders');
+    $invoice->lines()->delete();
+    $this->getJson('/api/v1/customers/16/transactions/1347')->assertJsonPath('data.sales_orders', []);
+    Http::assertNothingSent();
 });

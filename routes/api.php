@@ -18,7 +18,7 @@ Route::prefix('v1')->name('api.v1.')->middleware('auth:sanctum')->group(function
         ->name('status');
 });
 
-Route::prefix('v1/customers/{customer:netsuite_id}')->name('api.v1.customers.')
+Route::prefix('v1/customers/{customer:id}')->name('api.v1.customers.')
     ->whereNumber('customer')
     ->middleware(['auth:sanctum', 'abilities:transactions:read', AuthorizeCustomerRead::class, 'throttle:120,1'])
     ->group(function (): void {
@@ -29,12 +29,12 @@ Route::prefix('v1/customers/{customer:netsuite_id}')->name('api.v1.customers.')
         Route::get('invoice-summary', CustomerInvoiceSummaryController::class)->name('invoice-summary');
     });
 
-Route::post('v1/customers/{customer:netsuite_id}/activity', CustomerActivityController::class)
+Route::post('v1/customers/{customer:id}/activity', CustomerActivityController::class)
     ->whereNumber('customer')
     ->middleware(['auth:sanctum', 'abilities:activity:write', AuthorizeCustomerRead::class, 'throttle:30,1'])
     ->name('api.v1.customers.activity');
 
-Route::post('v1/customers/{customer:netsuite_id}/order-refreshes', CustomerOrderRefreshController::class)
+Route::post('v1/customers/{customer:id}/order-refreshes', CustomerOrderRefreshController::class)
     ->whereNumber('customer')
     ->middleware(['auth:sanctum', 'abilities:orders:refresh', AuthorizeCustomerRead::class, 'throttle:10,1'])
     ->name('api.v1.customers.order-refreshes');

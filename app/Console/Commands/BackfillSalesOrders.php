@@ -32,7 +32,7 @@ class BackfillSalesOrders extends Command
 
         try {
             $companies = Company::query()->where('is_active', true)->whereNull('sales_orders_backfilled_at')
-                ->orderBy('netsuite_id')->limit($limit)->get(['id', 'netsuite_id']);
+                ->orderBy('id')->limit($limit)->get(['id']);
             $completed = 0;
 
             foreach ($companies as $company) {
@@ -42,15 +42,15 @@ class BackfillSalesOrders extends Command
                     return self::FAILURE;
                 }
 
-                $this->line('Backfill customer '.$company->netsuite_id);
+                $this->line('Backfill customer '.$company->id);
 
                 if ($this->option('dry-run')) {
                     continue;
                 }
 
-                if ($this->call('milkstool:sync-sales-orders', ['customer' => $company->netsuite_id, '--incremental' => true]) !== self::SUCCESS
-                    || $this->call('milkstool:reconcile-sales-orders', ['customer' => $company->netsuite_id]) !== self::SUCCESS) {
-                    $this->error('Backfill stopped at customer '.$company->netsuite_id.'. Completed customers will be skipped when you rerun.');
+                if ($this->call('milkstool:sync-sales-orders', ['customer' => $company->id, '--incremental' => true]) !== self::SUCCESS
+                    || $this->call('milkstool:reconcile-sales-orders', ['customer' => $company->id]) !== self::SUCCESS) {
+                    $this->error('Backfill stopped at customer '.$company->id.'. Completed customers will be skipped when you rerun.');
 
                     return self::FAILURE;
                 }

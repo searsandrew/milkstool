@@ -20,7 +20,7 @@ class StoreInvoice
         $invoiceId = (int) $invoice['id'];
 
         return DB::transaction(function () use ($company, $invoiceId, $invoice, $lines): Transaction {
-            $transaction = Transaction::query()->firstOrNew(['netsuite_id' => $invoiceId]);
+            $transaction = Transaction::query()->firstOrNew(['id' => $invoiceId]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'CustInvc')) {
                 throw new RuntimeException('This transaction belongs to another customer or transaction type.');

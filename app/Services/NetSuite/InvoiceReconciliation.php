@@ -18,7 +18,7 @@ class InvoiceReconciliation
      */
     public function compare(Company $company): array
     {
-        $source = $this->source->controlTotals((int) $company->netsuite_id);
+        $source = $this->source->controlTotals((int) $company->id);
         $localInvoices = $company->transactions()->where('type', 'CustInvc')
             ->selectRaw('currency_id, COUNT(*) AS invoice_count, COUNT(foreign_amount_paid) AS paid_count, COUNT(foreign_amount_unpaid) AS unpaid_count, COALESCE(SUM(foreign_amount_paid), 0) AS foreign_amount_paid, COALESCE(SUM(foreign_amount_unpaid), 0) AS foreign_amount_unpaid, SUM(total) AS total, SUM(foreign_total) AS foreign_total')
             ->groupBy('currency_id')->toBase()->get()->keyBy('currency_id');

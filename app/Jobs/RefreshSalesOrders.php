@@ -45,7 +45,7 @@ class RefreshSalesOrders implements ShouldBeUnique, ShouldQueue
 
     public function handle(SyncSalesOrders $sync): void
     {
-        if (Company::query()->where('netsuite_id', $this->customerId)->where('is_active', false)->exists()) {
+        if (Company::query()->where('id', $this->customerId)->where('is_active', false)->exists()) {
             return;
         }
 
@@ -66,7 +66,7 @@ class RefreshSalesOrders implements ShouldBeUnique, ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        Company::query()->where('netsuite_id', $this->customerId)
+        Company::query()->where('id', $this->customerId)
             ->where(fn (Builder $query) => $query->whereNull('sales_orders_synced_at')->orWhere('sales_orders_synced_at', '<=', $this->requestedAt))
             ->update([
                 'sales_orders_sync_error' => 'Background refresh failed. Inspect failed queue jobs before retrying.',

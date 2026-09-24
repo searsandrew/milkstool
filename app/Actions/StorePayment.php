@@ -21,7 +21,7 @@ class StorePayment
         $paymentId = (int) $payment['id'];
 
         return DB::transaction(function () use ($company, $paymentId, $payment, $lines, $applications): Transaction {
-            $transaction = Transaction::query()->firstOrNew(['netsuite_id' => $paymentId]);
+            $transaction = Transaction::query()->firstOrNew(['id' => $paymentId]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'CustPymt')) {
                 throw new RuntimeException('This transaction belongs to another customer or transaction type.');

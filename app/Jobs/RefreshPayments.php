@@ -45,7 +45,7 @@ class RefreshPayments implements ShouldBeUnique, ShouldQueue
 
     public function handle(SyncPayments $sync): void
     {
-        if (Company::query()->where('netsuite_id', $this->customerId)->where('is_active', false)->exists()) {
+        if (Company::query()->where('id', $this->customerId)->where('is_active', false)->exists()) {
             return;
         }
 
@@ -66,7 +66,7 @@ class RefreshPayments implements ShouldBeUnique, ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        Company::query()->where('netsuite_id', $this->customerId)
+        Company::query()->where('id', $this->customerId)
             ->where(fn (Builder $query) => $query->whereNull('payments_synced_at')->orWhere('payments_synced_at', '<=', $this->requestedAt))
             ->update([
                 'payments_sync_error' => 'Background refresh failed. Inspect failed queue jobs before retrying.',

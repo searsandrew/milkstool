@@ -10,14 +10,14 @@ use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
     Http::preventStrayRequests();
-    $this->company = Company::factory()->create(['netsuite_id' => 16]);
+    $this->company = Company::factory()->create(['id' => 16]);
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
 });
 
 it('returns invoice payment and credit allocations without replacing source balances', function () {
-    $invoice = Transaction::factory()->for($this->company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc', 'foreign_amount_paid' => '70', 'foreign_amount_unpaid' => '30']);
-    $payment = Transaction::factory()->for($this->company)->create(['netsuite_id' => 1517, 'type' => 'CustPymt', 'number' => 'PAY-1517', 'transaction_date' => '2026-01-02', 'currency_id' => 1]);
-    $credit = Transaction::factory()->for($this->company)->create(['netsuite_id' => 8124, 'type' => 'CustCred']);
+    $invoice = Transaction::factory()->for($this->company)->create(['id' => 1347, 'type' => 'CustInvc', 'foreign_amount_paid' => '70', 'foreign_amount_unpaid' => '30']);
+    $payment = Transaction::factory()->for($this->company)->create(['id' => 1517, 'type' => 'CustPymt', 'number' => 'PAY-1517', 'transaction_date' => '2026-01-02', 'currency_id' => 1]);
+    $credit = Transaction::factory()->for($this->company)->create(['id' => 8124, 'type' => 'CustCred']);
     PaymentApplication::factory()->for($payment)->create(['target_netsuite_id' => 1347, 'target_customer_id' => 16, 'target_type' => 'CustInvc', 'foreign_amount' => '40.12345678', 'payment_line_id' => 1]);
     CreditMemoApplication::factory()->for($credit)->create(['target_netsuite_id' => 1347, 'target_customer_id' => 16, 'target_type' => 'CustInvc', 'foreign_amount' => '20', 'credit_line_id' => 0]);
     PaymentApplication::factory()->for($payment)->create(['target_netsuite_id' => 1489, 'target_customer_id' => 16]);
@@ -45,7 +45,7 @@ it('returns invoice payment and credit allocations without replacing source bala
 
 it('excludes other customers and unverified target ownership even with broad grants', function (string $applicationClass, string $type) {
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customers:all']);
-    Transaction::factory()->for($this->company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc']);
+    Transaction::factory()->for($this->company)->create(['id' => 1347, 'type' => 'CustInvc']);
     $foreignSource = Transaction::factory()->create(['type' => $type]);
     $ownSource = Transaction::factory()->for($this->company)->create(['type' => $type]);
     $wrongTypeSource = Transaction::factory()->for($this->company)->create(['type' => 'SalesOrd']);
@@ -58,7 +58,7 @@ it('excludes other customers and unverified target ownership even with broad gra
 })->with([[PaymentApplication::class, 'CustPymt'], [CreditMemoApplication::class, 'CustCred']]);
 
 it('preserves unknown and signed settlement amounts', function (string $applicationClass, string $type, string $key, ?string $amount) {
-    Transaction::factory()->for($this->company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc']);
+    Transaction::factory()->for($this->company)->create(['id' => 1347, 'type' => 'CustInvc']);
     $source = Transaction::factory()->for($this->company)->create(['type' => $type, 'currency_id' => 2]);
     $applicationClass::factory()->for($source)->create(['target_netsuite_id' => 1347, 'target_customer_id' => 16, 'target_type' => 'CustInvc', 'target_currency_id' => 1, 'foreign_amount' => $amount]);
 
@@ -69,7 +69,7 @@ it('preserves unknown and signed settlement amounts', function (string $applicat
 })->with([[PaymentApplication::class, 'CustPymt', 'applied_payments', null], [CreditMemoApplication::class, 'CustCred', 'applied_credits', '-0.00000001']]);
 
 it('omits invoice settlements from other document types and transaction lists', function (string $type) {
-    Transaction::factory()->for($this->company)->create(['netsuite_id' => 1347, 'type' => $type]);
+    Transaction::factory()->for($this->company)->create(['id' => 1347, 'type' => $type]);
 
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
         ->assertJsonMissingPath('data.applied_payments')->assertJsonMissingPath('data.applied_credits')
@@ -78,7 +78,7 @@ it('omits invoice settlements from other document types and transaction lists', 
 })->with(['SalesOrd', 'CustCred', 'CustPymt']);
 
 it('distinguishes an empty settlement history from one that has not been synced', function () {
-    Transaction::factory()->for($this->company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc']);
+    Transaction::factory()->for($this->company)->create(['id' => 1347, 'type' => 'CustInvc']);
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
         ->assertJsonPath('data.applied_payments', [])->assertJsonPath('data.applied_credits', [])
         ->assertJsonPath('sync.payments.history_backfilled', false)

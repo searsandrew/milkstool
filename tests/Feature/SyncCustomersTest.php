@@ -16,7 +16,7 @@ beforeEach(function () {
 });
 
 it('discovers active customers across pages without downloading transactions or changing sync checkpoints', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_checkpoint_at' => '2026-09-01 10:00:00',
+    $company = Company::factory()->create(['id' => 16, 'sales_orders_checkpoint_at' => '2026-09-01 10:00:00',
         'sales_orders_synced_at' => '2026-09-01 10:02:00', 'sales_orders_next_sync_at' => '2026-09-01 16:02:00']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([array_replace(sourceCustomer(), ['stage' => 'CUSTOMER'])], true))
@@ -34,7 +34,7 @@ it('discovers active customers across pages without downloading transactions or 
     expect($company->sales_orders_checkpoint_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 10:00:00');
     expect($company->sales_orders_synced_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 10:02:00');
     expect($company->sales_orders_next_sync_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 16:02:00');
-    expect(Company::query()->where('netsuite_id', 17)->sole()->sales_orders_next_sync_at)->toBeNull();
+    expect(Company::query()->where('id', 17)->sole()->sales_orders_next_sync_at)->toBeNull();
     Http::assertSentCount(2);
     Http::assertSent(fn ($request) => str_contains($request['q'], "WHERE stage = 'CUSTOMER' AND id > 16 ORDER BY id"));
 });
@@ -55,8 +55,8 @@ it('repeats discovery without duplicates or unnecessary identity writes', functi
 });
 
 it('deactivates only explicitly inactive customers while retaining their orders and missing customers', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $missing = Company::factory()->create(['netsuite_id' => 17]);
+    $company = Company::factory()->create(['id' => 16]);
+    $missing = Company::factory()->create(['id' => 17]);
     $order = Transaction::factory()->for($company)->create();
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([
         array_replace(sourceCustomer(), ['stage' => 'CUSTOMER', 'isinactive' => 'T']),
@@ -72,7 +72,7 @@ it('deactivates only explicitly inactive customers while retaining their orders 
 
 it('makes reactivated customers due immediately', function () {
     $this->freezeSecond();
-    $company = Company::factory()->create(['netsuite_id' => 16, 'is_active' => false, 'sales_orders_next_sync_at' => now()->addHours(6)]);
+    $company = Company::factory()->create(['id' => 16, 'is_active' => false, 'sales_orders_next_sync_at' => now()->addHours(6)]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([
         array_replace(sourceCustomer(), ['stage' => 'CUSTOMER']),
     ]))]);
@@ -85,7 +85,7 @@ it('makes reactivated customers due immediately', function () {
 });
 
 it('previews changes without creating or updating customers', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'name' => 'Existing name']);
+    $company = Company::factory()->create(['id' => 16, 'name' => 'Existing name']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([
         array_replace(sourceCustomer(), ['stage' => 'CUSTOMER']),
         array_replace(sourceCustomer(), ['id' => '17', 'stage' => 'CUSTOMER']),
@@ -126,8 +126,8 @@ it('rejects malformed customer pages without changing the directory', function (
 ]);
 
 it('skips busy and newer customer identities', function () {
-    $busy = Company::factory()->create(['netsuite_id' => 16, 'name' => 'Busy']);
-    $newer = Company::factory()->create(['netsuite_id' => 17, 'name' => 'Newer', 'netsuite_updated_at' => '2026-09-02 12:00:00']);
+    $busy = Company::factory()->create(['id' => 16, 'name' => 'Busy']);
+    $newer = Company::factory()->create(['id' => 17, 'name' => 'Newer', 'netsuite_updated_at' => '2026-09-02 12:00:00']);
     Cache::lock('netsuite-sales-orders:16', 600)->get();
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([
         array_replace(sourceCustomer(), ['stage' => 'CUSTOMER']),
@@ -182,7 +182,7 @@ it('deduplicates discovery jobs and runs a serialized job on the customer queue'
 
 it('does not refresh orders for a customer deactivated after dispatch', function () {
     RefreshSalesOrders::dispatch(16);
-    Company::factory()->create(['netsuite_id' => 16, 'is_active' => false]);
+    Company::factory()->create(['id' => 16, 'is_active' => false]);
 
     Queue::connection('netsuite')->pop('sales-orders')->fire();
 

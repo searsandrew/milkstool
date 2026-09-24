@@ -31,7 +31,7 @@ function invoiceLineTotals(array $overrides = []): array
 }
 
 it('batches invoices and reconciles currencies without mixing sales orders or other customers', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     Transaction::factory()->for($company)->create();
     Transaction::factory()->create(['type' => 'CustInvc']);
     $second = sourceInvoice(['id' => '1348', 'currency_id' => '2']);
@@ -54,8 +54,8 @@ it('batches invoices and reconciles currencies without mixing sales orders or ot
 });
 
 it('refreshes unchanged modification timestamps and payment snapshots without duplicating invoices', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $existing = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc',
+    $company = Company::factory()->create(['id' => 16]);
+    $existing = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustInvc',
         'netsuite_updated_at' => '2026-09-01 12:00:00', 'foreign_amount_paid' => '0', 'foreign_amount_unpaid' => '25.12345678']);
     TransactionLine::factory()->for($existing)->create(['netsuite_line_id' => 9]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
@@ -72,7 +72,7 @@ it('refreshes unchanged modification timestamps and payment snapshots without du
 });
 
 it('preserves last success when reconciliation fails', function (array $header, array $lines) {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'invoices_synced_at' => '2026-09-01 12:00:00']);
+    $company = Company::factory()->create(['id' => 16, 'invoices_synced_at' => '2026-09-01 12:00:00']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine()]))
         ->push(sourcePage([sourceInvoice()]))->push(sourcePage([invoiceHeaderTotals($header)]))->push(sourcePage([invoiceLineTotals($lines)]))]);
@@ -91,7 +91,7 @@ it('preserves last success when reconciliation fails', function (array $header, 
 ]);
 
 it('keeps missing source invoices and rejects a false successful sync', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     $missing = Transaction::factory()->for($company)->create(['type' => 'CustInvc']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))]);
@@ -103,7 +103,7 @@ it('keeps missing source invoices and rejects a false successful sync', function
 });
 
 it('records a reconciled empty history only after validating the customer', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([]))]);
 
@@ -114,8 +114,8 @@ it('records a reconciled empty history only after validating the customer', func
 });
 
 it('does not replace old lines when a batch line page fails', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $invoice = Transaction::factory()->for($company)->create(['netsuite_id' => 1347, 'type' => 'CustInvc']);
+    $company = Company::factory()->create(['id' => 16]);
+    $invoice = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustInvc']);
     $line = TransactionLine::factory()->for($invoice)->create();
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceInvoice()]))
@@ -129,7 +129,7 @@ it('does not replace old lines when a batch line page fails', function () {
 });
 
 it('rejects changed or missing verification headers before saving a batch', function (array $verification) {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine()]))
         ->push(sourcePage($verification))]);
@@ -153,7 +153,7 @@ it('paginates customer invoices and refuses duplicate header pages', function (b
 })->with([true, false]);
 
 it('rejects truncated reconciliation totals', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))
         ->push(sourcePage([invoiceHeaderTotals()], true))->push(sourcePage([]))]);
@@ -164,7 +164,7 @@ it('rejects truncated reconciliation totals', function () {
 });
 
 it('shares the single-invoice lock and does not change sync state on contention', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16]);
+    $company = Company::factory()->create(['id' => 16]);
     Cache::lock('netsuite-invoices:16', 600)->get();
 
     $this->artisan('milkstool:sync-invoices', ['customer' => '16'])->assertFailed();
@@ -174,7 +174,7 @@ it('shares the single-invoice lock and does not change sync state on contention'
 });
 
 it('keeps completed batches but leaves freshness unchanged when a later page fails', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'invoices_synced_at' => '2026-09-01 12:00:00']);
+    $company = Company::factory()->create(['id' => 16, 'invoices_synced_at' => '2026-09-01 12:00:00']);
     $invoices = array_map(fn (int $id): array => sourceInvoice(['id' => (string) $id]), range(1347, 1396));
     $lines = array_map(fn (int $id): array => sourceInvoiceLine(['transaction_id' => (string) $id]), range(1347, 1396));
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
@@ -192,7 +192,7 @@ it('keeps completed batches but leaves freshness unchanged when a later page fai
 });
 
 it('reconciles unknown paid amounts without treating null as a known zero', function () {
-    Company::factory()->create(['netsuite_id' => 16]);
+    Company::factory()->create(['id' => 16]);
     $invoice = sourceInvoice(['foreign_amount_paid' => null, 'foreign_amount_unpaid' => null]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([$invoice]))->push(sourcePage([sourceInvoiceLine()]))

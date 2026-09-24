@@ -9,8 +9,8 @@ use Laravel\Sanctum\Sanctum;
 
 it('lists customer payments and exposes only applications to the same customer', function () {
     Http::preventStrayRequests();
-    $company = Company::factory()->create(['netsuite_id' => 16]);
-    $payment = Transaction::factory()->for($company)->create(['netsuite_id' => 1517, 'type' => 'CustPymt']);
+    $company = Company::factory()->create(['id' => 16]);
+    $payment = Transaction::factory()->for($company)->create(['id' => 1517, 'type' => 'CustPymt']);
     Transaction::factory()->create(['type' => 'CustPymt']);
     PaymentApplication::factory()->for($payment)->create(['target_customer_id' => 16, 'target_netsuite_id' => 1347, 'foreign_amount' => '60']);
     PaymentApplication::factory()->for($payment)->create(['target_customer_id' => 17, 'target_netsuite_id' => 1489]);

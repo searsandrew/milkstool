@@ -17,15 +17,15 @@ class DispatchSalesOrderRefreshes extends Command
         $count = 0;
         $companies = Company::query()->where('is_active', true)
             ->dueForRefresh('sales_orders')
-            ->select(['id', 'netsuite_id'])->lazyById(100);
+            ->select(['id'])->lazyById(100);
 
         foreach ($companies as $company) {
             $count++;
 
             if ($this->option('dry-run')) {
-                $this->line('Due: NetSuite customer '.$company->netsuite_id);
+                $this->line('Due: NetSuite customer '.$company->id);
             } else {
-                RefreshSalesOrders::dispatch((int) $company->netsuite_id);
+                RefreshSalesOrders::dispatch((int) $company->id);
             }
         }
 

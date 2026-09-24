@@ -17,7 +17,7 @@ class ReconcileSalesOrders
     /** @return list<array{currency_id: int, metric: string, source: string, local: string, matches: bool}> */
     public function handle(int $customerId): array
     {
-        $company = Company::query()->where('netsuite_id', $customerId)->first();
+        $company = Company::query()->where('id', $customerId)->first();
 
         if ($company === null) {
             throw new RuntimeException('Customer has not been imported. Run milkstool:sync-sales-orders first.');

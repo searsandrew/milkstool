@@ -49,7 +49,7 @@ class RefreshSubmittedOrder implements ShouldBeUnique, ShouldQueue
 
     public function handle(SyncSalesOrders $sync): void
     {
-        if (! Company::query()->where('netsuite_id', $this->customerId)->where('is_active', true)->exists()) {
+        if (! Company::query()->where('id', $this->customerId)->where('is_active', true)->exists()) {
             return;
         }
         if (now()->timestamp >= $this->expiresAt) {

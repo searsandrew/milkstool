@@ -9,8 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('companies', function (Blueprint $table): void {
-            $table->id();
-            $table->unsignedBigInteger('netsuite_id')->unique();
+            $table->unsignedBigInteger('id')->primary();
             $table->string('account_number')->nullable()->index();
             $table->string('name');
             $table->unsignedBigInteger('sales_rep_id')->nullable()->index();

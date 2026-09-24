@@ -11,7 +11,7 @@ use Laravel\Sanctum\Sanctum;
 
 beforeEach(function () {
     fakeNetSuiteConfiguration();
-    $this->company = Company::factory()->create(['netsuite_id' => 16]);
+    $this->company = Company::factory()->create(['id' => 16]);
 });
 
 /** @return list<array<string, mixed>> */
@@ -74,7 +74,7 @@ it('refreshes and removes applications even when the credit header is unchanged'
 });
 
 it('retains old applications when source verification changes', function () {
-    $credit = Transaction::factory()->for($this->company)->create(['netsuite_id' => 8124, 'type' => 'CustCred']);
+    $credit = Transaction::factory()->for($this->company)->create(['id' => 8124, 'type' => 'CustCred']);
     $existing = CreditMemoApplication::factory()->for($credit)->create();
     fakeCreditApplicationSync(creditApplications(), []);
     $this->artisan('milkstool:sync-credit-memos', ['customer' => 16])->assertFailed();
@@ -98,7 +98,7 @@ it('preserves unknown and signed application amounts', function (?string $amount
 })->with([[null, '0'], ['-0.00000001', '-0.00000001']]);
 
 it('exposes credit applications only to the same customer and keeps them distinct from payments', function () {
-    $credit = Transaction::factory()->for($this->company)->create(['netsuite_id' => 8124, 'type' => 'CustCred']);
+    $credit = Transaction::factory()->for($this->company)->create(['id' => 8124, 'type' => 'CustCred']);
     CreditMemoApplication::factory()->for($credit)->create(['target_netsuite_id' => 7177, 'target_customer_id' => 16]);
     CreditMemoApplication::factory()->for($credit)->create(['target_customer_id' => 17]);
     CreditMemoApplication::factory()->for($credit)->create(['target_customer_id' => null]);

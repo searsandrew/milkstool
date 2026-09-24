@@ -30,11 +30,11 @@ it('bootstraps an incremental checkpoint with a full history using the source cl
 });
 
 it('updates an old order in an overlapping modification window without replacing unrelated history', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16,
+    $company = Company::factory()->create(['id' => 16,
         'sales_orders_checkpoint_at' => '2026-09-16 10:00:00', 'sales_orders_full_synced_at' => '2026-09-15 12:00:00']);
-    $old = Transaction::factory()->for($company)->create(['netsuite_id' => 101]);
+    $old = Transaction::factory()->for($company)->create(['id' => 101]);
     TransactionLine::factory()->for($old)->create(['netsuite_line_id' => 8]);
-    $unrelated = Transaction::factory()->for($company)->create(['netsuite_id' => 102]);
+    $unrelated = Transaction::factory()->for($company)->create(['id' => 102]);
     $changed = sourceOrder(['updated_at' => '2026-09-16 09:55:00', 'status' => 'G']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([['current_time' => '2026-09-16 12:00:00']]))
@@ -54,7 +54,7 @@ it('updates an old order in an overlapping modification window without replacing
 });
 
 it('advances an empty incremental window without deleting existing orders', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16,
+    $company = Company::factory()->create(['id' => 16,
         'sales_orders_checkpoint_at' => '2026-09-16 10:00:00', 'sales_orders_full_synced_at' => '2026-09-15 12:00:00']);
     $order = Transaction::factory()->for($company)->create();
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
@@ -69,7 +69,7 @@ it('advances an empty incremental window without deleting existing orders', func
 });
 
 it('retains its checkpoint and successful timestamp when an incremental page fails', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_synced_at' => '2026-09-16 10:02:00',
+    $company = Company::factory()->create(['id' => 16, 'sales_orders_synced_at' => '2026-09-16 10:02:00',
         'sales_orders_checkpoint_at' => '2026-09-16 10:00:00', 'sales_orders_full_synced_at' => '2026-09-15 12:00:00']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([['current_time' => '2026-09-16 12:00:00']]))
@@ -83,7 +83,7 @@ it('retains its checkpoint and successful timestamp when an incremental page fai
 });
 
 it('performs a weekly full scan and refuses to hide a missing source order', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16,
+    $company = Company::factory()->create(['id' => 16,
         'sales_orders_checkpoint_at' => '2026-09-16 10:00:00', 'sales_orders_full_synced_at' => '2026-09-09 12:00:00']);
     $order = Transaction::factory()->for($company)->create();
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
@@ -98,7 +98,7 @@ it('performs a weekly full scan and refuses to hide a missing source order', fun
 });
 
 it('rejects an order outside the source window without advancing the checkpoint', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16,
+    $company = Company::factory()->create(['id' => 16,
         'sales_orders_checkpoint_at' => '2026-09-16 10:00:00', 'sales_orders_full_synced_at' => '2026-09-15 12:00:00']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([['current_time' => '2026-09-16 12:00:00']]))
@@ -111,7 +111,7 @@ it('rejects an order outside the source window without advancing the checkpoint'
 });
 
 it('refuses an unreliable source clock before fetching orders', function (array $clock) {
-    $company = Company::factory()->create(['netsuite_id' => 16,
+    $company = Company::factory()->create(['id' => 16,
         'sales_orders_checkpoint_at' => '2026-09-16 10:00:00', 'sales_orders_full_synced_at' => '2026-09-15 12:00:00']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push($clock)]);
@@ -134,9 +134,9 @@ it('rejects resume combined with an incremental or queued import', function (str
 })->with(['--incremental', '--queue']);
 
 it('rereads unchanged headers and repairs their lines during the weekly full scan', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_checkpoint_at' => '2026-09-16 10:00:00',
+    $company = Company::factory()->create(['id' => 16, 'sales_orders_checkpoint_at' => '2026-09-16 10:00:00',
         'sales_orders_full_synced_at' => '2026-09-09 12:00:00']);
-    $order = Transaction::factory()->for($company)->create(['netsuite_id' => 101, 'raw_payload' => sourceOrder()]);
+    $order = Transaction::factory()->for($company)->create(['id' => 101, 'raw_payload' => sourceOrder()]);
     TransactionLine::factory()->for($order)->create(['netsuite_line_id' => 1, 'quantity' => '-100']);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([['current_time' => '2026-09-16 12:00:00']]))
@@ -150,7 +150,7 @@ it('rereads unchanged headers and repairs their lines during the weekly full sca
 });
 
 it('keeps completed batches but replays their window after a later page fails', function () {
-    $company = Company::factory()->create(['netsuite_id' => 16, 'sales_orders_checkpoint_at' => '2026-09-16 10:00:00',
+    $company = Company::factory()->create(['id' => 16, 'sales_orders_checkpoint_at' => '2026-09-16 10:00:00',
         'sales_orders_full_synced_at' => '2026-09-15 12:00:00']);
     $orders = array_map(fn (int $id): array => sourceOrder(['id' => (string) $id, 'updated_at' => '2026-09-16 11:00:00']), range(101, 150));
     $lines = array_map(fn (int $id): array => sourceLine(['transaction_id' => (string) $id]), range(101, 150));

@@ -16,7 +16,7 @@ use Illuminate\Validation\ValidationException;
 
 beforeEach(function () {
     fakeNetSuiteConfiguration();
-    $this->company = Company::factory()->create(['netsuite_id' => 16]);
+    $this->company = Company::factory()->create(['id' => 16]);
 });
 
 /** @return array<string, mixed> */
@@ -99,7 +99,7 @@ it('removes applications only after verifying an empty application snapshot', fu
 });
 
 it('retains previously stored applications if the source changes during collection', function () {
-    $payment = Transaction::factory()->for($this->company)->create(['netsuite_id' => 1517, 'type' => 'CustPymt']);
+    $payment = Transaction::factory()->for($this->company)->create(['id' => 1517, 'type' => 'CustPymt']);
     $existing = PaymentApplication::factory()->for($payment)->create();
     fakePaymentSync(paymentApplications(), []);
     $this->artisan('milkstool:sync-payments', ['customer' => 16])->assertFailed();
@@ -152,7 +152,7 @@ it('paginates applications and rejects a repeated cursor', function (bool $dupli
 })->with([true, false]);
 
 it('preserves stored data on a failed application page', function () {
-    $payment = Transaction::factory()->for($this->company)->create(['netsuite_id' => 1517, 'type' => 'CustPymt']);
+    $payment = Transaction::factory()->for($this->company)->create(['id' => 1517, 'type' => 'CustPymt']);
     $existing = PaymentApplication::factory()->for($payment)->create();
     Http::fake(['https://netsuite.example/*' => Http::sequence()
         ->push(sourcePage([sourceCustomer()]))->push(sourcePage([paymentHeader()]))->push(sourcePage([paymentLine()]))
@@ -162,7 +162,7 @@ it('preserves stored data on a failed application page', function () {
 });
 
 it('refuses transaction collisions with another company or type', function (bool $otherCustomer) {
-    Transaction::factory()->create(['netsuite_id' => 1517, 'type' => $otherCustomer ? 'CustPymt' : 'CustInvc',
+    Transaction::factory()->create(['id' => 1517, 'type' => $otherCustomer ? 'CustPymt' : 'CustInvc',
         'company_id' => $otherCustomer ? Company::factory()->create()->id : $this->company->id]);
     fakePaymentSync(paymentApplications());
     $this->artisan('milkstool:sync-payments', ['customer' => 16])->assertFailed();
@@ -229,7 +229,7 @@ it('keeps a newer successful payment refresh when an older job fails', function 
 });
 
 it('stops a payment backfill at the first failed customer', function () {
-    $next = Company::factory()->create(['netsuite_id' => 17]);
+    $next = Company::factory()->create(['id' => 17]);
     Http::fake(['https://netsuite.example/*' => Http::response([], 403)]);
     $this->artisan('milkstool:backfill-payments')->assertFailed();
     expect($this->company->refresh()->payments_backfilled_at)->toBeNull();

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     fakeNetSuiteConfiguration();
-    Company::factory()->create(['netsuite_id' => 16, 'is_active' => true]);
+    Company::factory()->create(['id' => 16, 'is_active' => true]);
     $this->travelTo(CarbonImmutable::parse('2026-09-16 12:00:00', 'UTC'));
 });
 
@@ -30,9 +30,9 @@ it('queues a requested customer once without contacting NetSuite in the command'
 
 it('dispatches only due active registered customers', function () {
     Queue::fake();
-    Company::factory()->create(['netsuite_id' => 17, 'is_active' => true, 'invoices_next_sync_at' => now()]);
-    Company::factory()->create(['netsuite_id' => 18, 'is_active' => false]);
-    Company::factory()->create(['netsuite_id' => 19, 'is_active' => true, 'invoices_next_sync_at' => now()->addMinute()]);
+    Company::factory()->create(['id' => 17, 'is_active' => true, 'invoices_next_sync_at' => now()]);
+    Company::factory()->create(['id' => 18, 'is_active' => false]);
+    Company::factory()->create(['id' => 19, 'is_active' => true, 'invoices_next_sync_at' => now()->addMinute()]);
 
     $this->artisan('milkstool:dispatch-invoice-refreshes')->assertSuccessful();
 
@@ -92,7 +92,7 @@ it('allows the queue to retry a connection failure or a busy customer lock', fun
 })->with([true, false]);
 
 it('fails permanent NetSuite errors immediately and delays the next baseline attempt', function () {
-    $company = Company::query()->where('netsuite_id', 16)->firstOrFail();
+    $company = Company::query()->where('id', 16)->firstOrFail();
     $company->forceFill(['invoices_synced_at' => '2026-09-15 12:00:00'])->save();
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response([], 403)]);
     RefreshInvoices::dispatch(16);
@@ -139,7 +139,7 @@ it('reserves the queue job longer than its execution timeout', function () {
 
 it('does not overwrite a newer successful sync when an older queued job fails', function () {
     $job = new RefreshInvoices(16);
-    $company = Company::query()->where('netsuite_id', 16)->firstOrFail();
+    $company = Company::query()->where('id', 16)->firstOrFail();
     $company->forceFill(['invoices_synced_at' => now()->addMinute(),
         'invoices_next_sync_at' => '2026-09-16 18:01:00'])->save();
 
@@ -150,7 +150,7 @@ it('does not overwrite a newer successful sync when an older queued job fails', 
 });
 
 it('skips a customer deactivated after dispatch', function () {
-    Company::query()->where('netsuite_id', 16)->update(['is_active' => false]);
+    Company::query()->where('id', 16)->update(['is_active' => false]);
     (new RefreshInvoices(16))->handle(app(SyncInvoices::class));
     Http::assertNothingSent();
 });
