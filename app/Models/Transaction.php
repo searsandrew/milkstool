@@ -38,7 +38,7 @@ class Transaction extends Model
     /** @param array<string, mixed> $invoice */
     public function fillInvoiceDetails(array $invoice): void
     {
-        $details = [];
+        $details = array_intersect_key($this->invoice_details ?? [], array_flip(['tracking_numbers', 'tracking_scope', 'tracking_synced_at']));
         foreach (['billing_address', 'shipping_address', 'terms_name', 'ship_date', 'shipping_method'] as $field) {
             $details[$field] = $invoice[$field] ?? null;
         }

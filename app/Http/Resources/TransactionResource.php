@@ -33,6 +33,9 @@ class TransactionResource extends JsonResource
             'settlements_scope' => $this->when($this->relationLoaded('appliedPayments'), 'same_customer'),
             'invoice_details' => $this->when($this->type === 'CustInvc' && $this->relationLoaded('lines'), fn () => $this->invoice_details === null ? null : [
                 ...array_intersect_key($this->invoice_details, array_flip(['billing_address', 'shipping_address', 'terms_id', 'terms_name', 'ship_date', 'shipping_method'])),
+                'tracking_numbers' => $this->invoice_details['tracking_numbers'] ?? null,
+                'tracking_scope' => $this->invoice_details['tracking_scope'] ?? null,
+                'tracking_synced_at' => $this->invoice_details['tracking_synced_at'] ?? null,
                 'synced_at' => $this->invoice_details_synced_at?->utc()->toIso8601String(),
             ]),
             'sales_orders' => $this->whenLoaded('salesOrders', fn () => $this->salesOrders->map(fn ($order): array => ['id' => (int) $order->id, 'number' => $order->number])->values()),
