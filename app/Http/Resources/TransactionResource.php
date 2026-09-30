@@ -38,6 +38,8 @@ class TransactionResource extends JsonResource
                 'tracking_synced_at' => $this->invoice_details['tracking_synced_at'] ?? null,
                 'synced_at' => $this->invoice_details_synced_at?->utc()->toIso8601String(),
             ]),
+            'invoice_summary' => $this->when($this->type === 'CustInvc' && $this->relationLoaded('lines'), fn () => ($this->invoice_details['summary']['source_modified_at'] ?? null) === $this->netsuite_updated_at?->utc()->toIso8601String()
+                    ? ($this->invoice_details['summary'] ?? null) : null),
             'sales_orders' => $this->whenLoaded('salesOrders', fn () => $this->salesOrders->map(fn ($order): array => ['id' => (int) $order->id, 'number' => $order->number])->values()),
             'lines' => TransactionLineResource::collection($this->whenLoaded('lines')),
         ];
