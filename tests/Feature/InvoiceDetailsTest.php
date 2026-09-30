@@ -185,3 +185,14 @@ it('stores invoice price levels in the line snapshot and exposes them on details
         ->assertJsonMissingPath('data.lines.0.raw_payload');
     Http::assertSent(fn ($request) => str_contains($request['q'] ?? '', 'transactionline.price AS price_level_id'));
 });
+
+it('exposes the source shipping classification without removing mirrored accounting rows', function () {
+    Company::factory()->create(['id' => 16]);
+    fakeSingleInvoice([sourceInvoiceLine(['item_type' => 'ShipItem'])]);
+    app(SyncInvoice::class)->handle(16, 1347);
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+
+    $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
+        ->assertJsonPath('data.lines.0.item_type', 'ShipItem');
+    Http::assertSent(fn ($request) => str_contains($request['q'] ?? '', 'transactionline.itemtype AS item_type'));
+});

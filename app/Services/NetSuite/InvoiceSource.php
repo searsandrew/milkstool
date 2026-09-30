@@ -46,7 +46,7 @@ class InvoiceSource
             $page = $this->client->query(<<<SQL
                 SELECT transactionline.transaction AS transaction_id, transactionline.id AS line_id,
                     transactionline.item AS item_id, item.itemid AS item_number,
-                    transactionline.createdfrom AS source_transaction_id,
+                    transactionline.createdfrom AS source_transaction_id, transactionline.itemtype AS item_type,
                     transactionline.quantity, transactionline.rate, transactionline.netamount AS amount,
                     transactionline.price AS price_level_id, BUILTIN.DF(transactionline.price) AS price_level_name,
                     transactionline.memo, transactionline.mainline, transactionline.taxline,
@@ -69,6 +69,7 @@ class InvoiceSource
                     'item_id' => ['nullable', 'integer'],
                     'source_transaction_id' => ['nullable', 'integer', 'min:1'],
                     'item_number' => ['nullable', 'string', 'max:255'],
+                    'item_type' => ['nullable', 'string', 'max:255'],
                     'memo' => ['nullable', 'string'],
                     'quantity' => ['nullable', 'numeric'],
                     'rate' => ['nullable', 'numeric'],

@@ -15,6 +15,7 @@ class TransactionLineResource extends JsonResource
             'source_transaction_id' => $this->source_transaction_id,
             'item_id' => $this->item_id,
             'item_number' => $this->item_number,
+            'item_type' => $this->raw_payload['item_type'] ?? null,
             'memo' => $this->memo,
             'quantity' => $this->quantity,
             'rate' => $this->rate,
