@@ -18,6 +18,8 @@ class TransactionLineResource extends JsonResource
             'memo' => $this->memo,
             'quantity' => $this->quantity,
             'rate' => $this->rate,
+            'price_level_id' => isset($this->raw_payload['price_level_id']) ? (int) $this->raw_payload['price_level_id'] : null,
+            'price_level_name' => $this->raw_payload['price_level_name'] ?? null,
             'amount' => $this->amount,
             'is_mainline' => $this->is_mainline,
             'is_tax_line' => $this->is_tax_line,

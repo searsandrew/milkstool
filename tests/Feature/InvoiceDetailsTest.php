@@ -172,3 +172,16 @@ it('returns distinct source sales orders only from the invoices customer', funct
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertJsonPath('data.sales_orders', []);
     Http::assertNothingSent();
 });
+
+it('stores invoice price levels in the line snapshot and exposes them on details', function () {
+    Company::factory()->create(['id' => 16]);
+    fakeSingleInvoice([sourceInvoiceLine(['price_level_id' => '-1', 'price_level_name' => 'Custom'])]);
+    app(SyncInvoice::class)->handle(16, 1347);
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+
+    $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
+        ->assertJsonPath('data.lines.0.price_level_id', -1)
+        ->assertJsonPath('data.lines.0.price_level_name', 'Custom')
+        ->assertJsonMissingPath('data.lines.0.raw_payload');
+    Http::assertSent(fn ($request) => str_contains($request['q'] ?? '', 'transactionline.price AS price_level_id'));
+});
