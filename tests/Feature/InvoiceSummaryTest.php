@@ -21,7 +21,7 @@ function summaryInvoice(): Transaction
 
 function summaryRecord(): array
 {
-    return ['id' => '1347', 'entity' => ['id' => '16'], 'currency' => ['id' => '1'],
+    return ['item' => ['items' => [['line' => 30, 'item' => ['id' => 360], 'quantityOrdered' => 3, 'quantityRemaining' => 3]], 'totalResults' => 1], 'id' => '1347', 'entity' => ['id' => '16'], 'currency' => ['id' => '1'],
         'lastModifiedDate' => '2026-09-01T12:00:00Z', 'subtotal' => '110', 'discountTotal' => '-10',
         'taxTotal' => '0', 'shippingCost' => '5', 'total' => '105'];
 }
@@ -34,6 +34,7 @@ it('copies source summary values preserving zero missing values and discounts', 
     $this->artisan('milkstool:sync-invoice-summary', ['customer' => 16, 'invoice' => 1347])->assertSuccessful();
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
+        ->assertJsonPath('data.invoice_summary.line_quantities.0.quantity_remaining', '3.00000000')
         ->assertJsonPath('data.invoice_summary.subtotal', '110.00000000')
         ->assertJsonPath('data.invoice_summary.discount_total', '-10.00000000')
         ->assertJsonPath('data.invoice_summary.tax_total', '0.00000000')
@@ -61,3 +62,17 @@ it('refuses invoices belonging to another customer without a source request', fu
     $this->artisan('milkstool:sync-invoice-summary', ['customer' => 17, 'invoice' => 1347])->assertFailed();
     Http::assertNothingSent();
 });
+
+it('refuses incomplete or duplicate invoice item quantities', function (string $field, mixed $value) {
+    $invoice = summaryInvoice();
+    $record = summaryRecord();
+    data_set($record, $field, $value);
+    Http::fake(['https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response($record)]);
+
+    $this->artisan('milkstool:sync-invoice-summary', ['customer' => 16, 'invoice' => 1347])->assertFailed();
+    expect($invoice->refresh()->invoice_details)->toBe(['shipping_method' => 'UPS Ground']);
+})->with([
+    ['item.hasMore', true], ['item.totalResults', 2],
+    ['item.items.0.quantityRemaining', 'not a quantity'],
+    ['item.items.1', ['line' => 30, 'quantityRemaining' => 9]],
+]);
