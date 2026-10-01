@@ -96,7 +96,8 @@ class ServiceHealth
             'enrichment' => [
                 'invoices' => $invoices->count(),
                 'missing_stored_summary' => $missingSummary,
-                'status' => 'not_verified_by_normal_sync',
+                'pending' => Transaction::query()->needsInvoiceEnrichment()->count(),
+                'status' => 'tracked_separately_from_financial_sync',
             ],
         ];
     }

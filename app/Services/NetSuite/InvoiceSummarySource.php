@@ -2,13 +2,52 @@
 
 namespace App\Services\NetSuite;
 
+use App\Exceptions\ReceivableSyncInterrupted;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Validator;
 
 class InvoiceSummarySource
 {
     public function __construct(private NetSuiteRestClient $client) {}
+
+    /**
+     * @param  array<string, mixed>  $invoice
+     * @param  list<array<string, mixed>>  $lines
+     * @return array<string, mixed>
+     */
+    public function forInvoice(int $customerId, array $invoice, array $lines): array
+    {
+        $summary = $this->fetch($customerId, (int) $invoice['id']);
+        if ($summary !== $this->fetch($customerId, (int) $invoice['id'])) {
+            throw new ReceivableSyncInterrupted('Invoice summary changed during retrieval. Retry.');
+        }
+        $modified = CarbonImmutable::parse($invoice['updated_at'], 'UTC');
+        if (! CarbonImmutable::parse($summary['source_modified_at'])->utc()->startOfMinute()->equalTo($modified->startOfMinute())
+            || ! BigDecimal::of($summary['total'])->isEqualTo((string) $invoice['foreign_total'])
+            || $summary['currency_id'] !== (int) $invoice['currency_id']) {
+            throw new ReceivableSyncInterrupted('Invoice summary and header do not describe the same source version.');
+        }
+        $sourceLines = collect($lines)->keyBy('line_id');
+        $quantities = collect($summary['line_quantities'])->keyBy('line_id');
+        foreach ($quantities as $lineId => $quantity) {
+            $line = $sourceLines->get($lineId);
+            if ($line === null || $quantity['item_id'] !== (isset($line['item_id']) ? (int) $line['item_id'] : null)) {
+                throw new ReceivableSyncInterrupted('Invoice item quantities do not match the source lines.');
+            }
+        }
+        foreach ($lines as $line) {
+            if ($line['mainline'] !== 'T' && $line['taxline'] !== 'T' && $line['discount_line'] !== 'T'
+                && ($line['item_type'] ?? null) !== 'ShipItem' && isset($line['item_id']) && ! $quantities->has($line['line_id'])) {
+                throw new ReceivableSyncInterrupted('Invoice item quantities are incomplete for the source lines.');
+            }
+        }
+
+        return [...$summary, 'schema_version' => 1, 'header_updated_at' => $modified->format('Y-m-d H:i:s'),
+            'source_modified_at' => $modified->toIso8601String(), 'synced_at' => now()->utc()->toIso8601String(),
+            'quantity_basis' => 'invoice_record'];
+    }
 
     /** @return array<string, mixed> */
     public function fetch(int $customerId, int $invoiceId): array

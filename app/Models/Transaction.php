@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\TransactionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -33,6 +34,25 @@ class Transaction extends Model
             'invoice_details' => 'array',
             'invoice_details_synced_at' => 'immutable_datetime',
         ];
+    }
+
+    /** @param Builder<Transaction> $query */
+    public function scopeNeedsInvoiceEnrichment(Builder $query): void
+    {
+        $query->where('type', 'CustInvc')->where(function (Builder $query): void {
+            $query->whereNull('invoice_details->summary->schema_version')
+                ->orWhere('invoice_details->summary->schema_version', '!=', 1)
+                ->orWhereNull('invoice_details->summary->header_updated_at')
+                ->orWhereNull('netsuite_updated_at')
+                ->orWhereColumn('invoice_details->summary->header_updated_at', '!=', 'netsuite_updated_at');
+        });
+    }
+
+    public function hasCurrentInvoiceEnrichment(): bool
+    {
+        return $this->type === 'CustInvc' && ($this->invoice_details['summary']['schema_version'] ?? null) === 1
+            && $this->netsuite_updated_at !== null
+            && ($this->invoice_details['summary']['header_updated_at'] ?? null) === $this->netsuite_updated_at->utc()->format('Y-m-d H:i:s');
     }
 
     /** @param array<string, mixed> $invoice */

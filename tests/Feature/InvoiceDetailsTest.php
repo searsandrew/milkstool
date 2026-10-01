@@ -30,7 +30,7 @@ it('mirrors invoice addresses and terms and exposes them only on authorized invo
     $this->getJson('/api/v1/customers/16/transactions')->assertOk()->assertJsonMissingPath('data.0.invoice_details');
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:17']);
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertForbidden()->assertDontSee('Historical Billing');
-    Http::assertSentCount(3);
+    Http::assertSentCount(5);
 });
 
 it('distinguishes legacy invoices from synced invoices whose optional details are absent', function () {

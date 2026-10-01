@@ -1,12 +1,14 @@
 <?php
 
 use App\Actions\SyncInvoices;
+use App\Jobs\RefreshInvoiceDetails;
 use App\Models\Company;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\NetSuite\InvoiceSource;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     fakeNetSuiteConfiguration();
@@ -54,6 +56,7 @@ it('batches invoices and reconciles currencies without mixing sales orders or ot
 });
 
 it('refreshes unchanged modification timestamps and payment snapshots without duplicating invoices', function () {
+    Queue::fake([RefreshInvoiceDetails::class]);
     $company = Company::factory()->create(['id' => 16]);
     $existing = Transaction::factory()->for($company)->create(['id' => 1347, 'type' => 'CustInvc',
         'netsuite_updated_at' => '2026-09-01 12:00:00', 'foreign_amount_paid' => '0', 'foreign_amount_unpaid' => '25.12345678']);
@@ -68,6 +71,7 @@ it('refreshes unchanged modification timestamps and payment snapshots without du
     $this->assertDatabaseCount('transaction_lines', 1);
     expect($existing->refresh()->foreign_amount_paid)->toBe('20.00000000');
     expect($existing->lines()->sole()->netsuite_line_id)->toBe(1);
+    Queue::assertPushed(RefreshInvoiceDetails::class, fn ($job) => $job->customerId === 16);
     Http::assertSentCount(6);
 });
 

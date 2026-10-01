@@ -1,5 +1,6 @@
 <?php
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\ResponseSequence;
 use Illuminate\Support\Facades\Http;
@@ -26,8 +27,9 @@ function sourceInvoiceLine(array $overrides = []): array
  */
 function fakeSingleInvoice(array $lines, array $header = []): void
 {
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
-        ->push(sourcePage([sourceInvoice($header)]))->push(sourcePage($lines))->push(sourcePage([sourceInvoice($header)]))]);
+    Http::fake(['https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response(sourceInvoiceRecord($lines, $header)),
+        'https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+            ->push(sourcePage([sourceInvoice($header)]))->push(sourcePage($lines))->push(sourcePage([sourceInvoice($header)]))]);
 }
 
 function fakeEmptyCreditApplications(ResponseSequence $sequence): Closure
@@ -36,4 +38,23 @@ function fakeEmptyCreditApplications(ResponseSequence $sequence): Closure
         return str_contains($request['q'] ?? '', 'FROM NextTransactionLineLink')
             ? Http::response(sourcePage([])) : $sequence($request);
     };
+}
+
+/**
+ * @param  list<array<string, mixed>>|null  $lines
+ * @param  array<string, mixed>  $header
+ * @return array<string, mixed>
+ */
+function sourceInvoiceRecord(?array $lines = null, array $header = []): array
+{
+    $invoice = sourceInvoice($header);
+    $items = collect($lines ?? [sourceInvoiceLine()])->filter(fn (array $line): bool => $line['mainline'] !== 'T' && $line['taxline'] !== 'T'
+        && $line['discount_line'] !== 'T' && ($line['item_type'] ?? null) !== 'ShipItem')->map(fn (array $line): array => [
+            'line' => $line['line_id'], 'item' => ['id' => $line['item_id'] ?? null], 'quantityRemaining' => 3, 'quantityOrdered' => 5,
+        ])->values()->all();
+
+    return ['id' => $invoice['id'], 'entity' => ['id' => $invoice['customer_id']], 'currency' => ['id' => $invoice['currency_id']],
+        'lastModifiedDate' => CarbonImmutable::parse($invoice['updated_at'], 'UTC')->toIso8601String(),
+        'subtotal' => $invoice['foreign_total'], 'shippingCost' => 0, 'taxTotal' => 0, 'total' => $invoice['foreign_total'],
+        'item' => ['items' => $items, 'totalResults' => count($items)]];
 }

@@ -28,11 +28,13 @@ it('imports an invoice with exact monetary fields, nullable lines and source ref
     expect($invoice->lines()->where('netsuite_line_id', 1)->sole()->source_transaction_id)->toBe(101);
     expect($company->refresh()->sales_orders_synced_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 12:00:00');
     expect($order->refresh()->total)->toBe('100.00000000');
-    Http::assertSentCount(3);
+    Http::assertSentCount(5);
 });
 
 it('updates payment snapshots and removes absent lines only after a complete reimport', function () {
     Company::factory()->create(['id' => 16]);
+    $firstRecord = sourceInvoiceRecord([sourceInvoiceLine(), sourceInvoiceLine(['line_id' => '2'])]);
+    Http::fake(['https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::sequence()->push($firstRecord)->push($firstRecord)->push(sourceInvoiceRecord())->push(sourceInvoiceRecord())]);
     $paid = sourceInvoice(['foreign_amount_paid' => '25.12345678', 'foreign_amount_unpaid' => '0', 'due_date' => null]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine(), sourceInvoiceLine(['line_id' => '2'])]))->push(sourcePage([sourceInvoice()]))
@@ -45,7 +47,7 @@ it('updates payment snapshots and removes absent lines only after a complete rei
     $this->assertDatabaseCount('transaction_lines', 1);
     expect(Transaction::query()->sole()->foreign_amount_unpaid)->toBe('0.00000000');
     expect(Transaction::query()->sole()->due_date)->toBeNull();
-    Http::assertSentCount(6);
+    Http::assertSentCount(10);
 });
 
 it('retains the existing invoice when a later line page fails', function () {
@@ -65,6 +67,7 @@ it('retains the existing invoice when a later line page fails', function () {
 
 it('refuses a payment change during retrieval even if the source modification timestamp is unchanged', function () {
     Company::factory()->create(['id' => 16]);
+    Http::fake(['https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response(sourceInvoiceRecord())]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine()]))
         ->push(sourcePage([sourceInvoice(['foreign_amount_unpaid' => '0'])]))]);
@@ -72,7 +75,7 @@ it('refuses a payment change during retrieval even if the source modification ti
     $this->artisan('milkstool:sync-invoice', ['customer' => '16', 'invoice' => '1347'])->assertFailed();
 
     $this->assertDatabaseCount('transactions', 0);
-    Http::assertSentCount(3);
+    Http::assertSentCount(5);
 });
 
 it('refuses malformed or foreign invoice headers before writing', function (array $overrides) {
@@ -115,6 +118,7 @@ it('does not overwrite another customer or transaction type', function (bool $ot
 
 it('paginates invoice lines and preserves unknown monetary amounts as null', function () {
     Company::factory()->create(['id' => 16]);
+    Http::fake(['https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response(sourceInvoiceRecord([sourceInvoiceLine(['line_id' => '0']), sourceInvoiceLine()]))]);
     $header = sourceInvoice(['foreign_amount_paid' => null, 'foreign_amount_unpaid' => null]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([$header]))->push(sourcePage([sourceInvoiceLine(['line_id' => '0'])], true))
@@ -124,7 +128,7 @@ it('paginates invoice lines and preserves unknown monetary amounts as null', fun
 
     expect(Transaction::query()->sole()->foreign_amount_unpaid)->toBeNull();
     $this->assertDatabaseCount('transaction_lines', 2);
-    Http::assertSent(fn ($request) => str_contains($request['q'], 'transactionline.id > 0'));
+    Http::assertSent(fn ($request) => str_contains($request['q'] ?? '', 'transactionline.id > 0'));
 });
 
 it('refuses concurrent imports and unregistered customers before contacting NetSuite', function (bool $registered) {

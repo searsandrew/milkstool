@@ -14,17 +14,22 @@ class StoreInvoice
      *
      * @param  array<string, mixed>  $invoice
      * @param  list<array<string, mixed>>  $lines
+     * @param  array<string, mixed>|null  $summary
      */
-    public function handle(Company $company, array $invoice, array $lines): Transaction
+    public function handle(Company $company, array $invoice, array $lines, ?array $summary = null): Transaction
     {
         $invoiceId = (int) $invoice['id'];
 
-        return DB::transaction(function () use ($company, $invoiceId, $invoice, $lines): Transaction {
+        return DB::transaction(function () use ($company, $invoiceId, $invoice, $lines, $summary): Transaction {
             $transaction = Transaction::query()->firstOrNew(['id' => $invoiceId]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'CustInvc')) {
                 throw new RuntimeException('This transaction belongs to another customer or transaction type.');
             }
+
+            $storedSummary = $transaction->invoice_details['summary'] ?? null;
+            $linesChanged = $summary === null && $storedSummary !== null
+                && $transaction->lines()->orderBy('netsuite_line_id')->get()->pluck('raw_payload')->all() != $lines;
 
             $attributes = array_intersect_key($invoice, array_flip([
                 'type', 'number', 'purchase_order_number', 'transaction_date', 'status', 'status_name',
@@ -36,6 +41,15 @@ class StoreInvoice
             $transaction->fill([...$attributes, 'company_id' => $company->id,
                 'netsuite_updated_at' => $invoice['updated_at'], 'synced_at' => now(), 'raw_payload' => $invoice]);
             $transaction->fillInvoiceDetails($invoice);
+            if ($summary === null && $storedSummary !== null && ($linesChanged
+                || ($storedSummary['total'] ?? null) !== $transaction->foreign_total
+                || ($storedSummary['currency_id'] ?? null) !== (int) $transaction->currency_id)) {
+                unset($storedSummary['schema_version'], $storedSummary['header_updated_at'], $storedSummary['source_modified_at']);
+                $transaction->invoice_details = [...$transaction->invoice_details, 'summary' => $storedSummary];
+            }
+            if ($summary !== null) {
+                $transaction->invoice_details = [...$transaction->invoice_details, 'summary' => $summary];
+            }
             $transaction->save();
 
             $lineIds = [];

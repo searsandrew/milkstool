@@ -3,6 +3,7 @@
 namespace App\Actions;
 
 use App\Exceptions\ReceivableSyncInterrupted;
+use App\Jobs\RefreshInvoiceDetails;
 use App\Models\Company;
 use App\Services\NetSuite\CustomerSource;
 use App\Services\NetSuite\InvoiceReconciliation;
@@ -75,6 +76,10 @@ class SyncInvoices
             $company->forceFill(['invoices_synced_at' => now(), 'invoices_sync_error' => null,
                 'invoices_next_sync_at' => $company->nextRefreshAt(),
                 'invoices_backfilled_at' => $company->invoices_backfilled_at ?? now()])->save();
+
+            if ($company->transactions()->needsInvoiceEnrichment()->exists()) {
+                RefreshInvoiceDetails::dispatch($customerId);
+            }
 
             return ['invoices' => $invoices, 'lines' => $lineCount, 'reconciliation' => $results];
         } catch (Throwable $exception) {
