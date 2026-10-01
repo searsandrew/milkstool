@@ -1,7 +1,9 @@
 <?php
 
+use App\Jobs\RefreshInvoiceDetails;
 use App\Models\ApiClient;
 use App\Models\Company;
+use App\Models\Transaction;
 use App\Services\ServiceHealth;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
@@ -148,4 +150,29 @@ it('reports failed and stale data even when all processes are healthy', function
     expect($report['healthy'])->toBeFalse();
     expect($report['data']['types']['invoices'])->toMatchArray(['failed' => 1, 'overdue' => 1]);
     Http::assertNothingSent();
+});
+
+it('recognizes successful enrichment behind a queued probe without declaring the backlog complete', function () {
+    processHealthProbes();
+    Cache::forget('milkstool:heartbeat:worker:invoice-enrichment');
+    $company = Company::factory()->create(['id' => 16, 'is_active' => true]);
+    foreach (range(1347, 1352) as $id) {
+        Transaction::factory()->for($company)->create(['id' => $id, 'type' => 'CustInvc',
+            'netsuite_updated_at' => '2026-09-01 12:00:00',
+            'invoice_details' => ['summary' => ['schema_version' => 1, 'header_updated_at' => '2026-09-01 12:00:00']]]);
+    }
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage([]))]);
+    RefreshInvoiceDetails::dispatch(16);
+    $this->artisan('milkstool:heartbeat')->assertSuccessful();
+
+    Queue::connection('netsuite')->pop('invoice-enrichment')->fire();
+
+    $health = app(ServiceHealth::class)->report();
+    expect($health['runtime_healthy'])->toBeTrue();
+    expect($health['data']['enrichment']['complete'])->toBeFalse();
+    expect($health['data']['enrichment']['tracking_due'])->toBe(1);
+    expect(DB::table('jobs')->where('queue', 'invoice-enrichment')->count())->toBe(2);
+    Http::assertSentCount(2);
+    $this->travel(1501)->seconds();
+    expect(collect(app(ServiceHealth::class)->report()['checks'])->firstWhere('name', 'worker_invoice-enrichment')['healthy'])->toBeFalse();
 });

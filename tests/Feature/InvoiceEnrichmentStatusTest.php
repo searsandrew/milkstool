@@ -6,6 +6,7 @@ use App\Models\Transaction;
 use App\Services\InvoiceEnrichmentStatus;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 
@@ -38,6 +39,7 @@ it('refreshes tracking without rereading an already enriched invoice and clears 
     expect(json_encode($invoice->invoice_details['enrichment_error']))->not->toContain('private', 'do not expose');
     expect(app(InvoiceEnrichmentStatus::class)->report()['last_attempt_errors'])->toBe(1);
     $job->assertNotFailed();
+    expect(Cache::get('milkstool:heartbeat:worker:invoice-enrichment'))->toBeNull();
     $failing = false;
     app()->call([$job, 'handle']);
     expect($invoice->refresh()->invoice_details['tracking_numbers'])->toBe([]);

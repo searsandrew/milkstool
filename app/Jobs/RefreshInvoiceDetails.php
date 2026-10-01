@@ -14,6 +14,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\Middleware\ThrottlesExceptions;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -80,6 +81,7 @@ class RefreshInvoiceDetails implements ShouldBeUniqueUntilProcessing, ShouldQueu
             if ($company->transactions()->needsInvoiceWork()->exists()) {
                 self::dispatch($this->customerId)->delay(now()->addSeconds(30));
             }
+            Cache::put('milkstool:heartbeat:worker:invoice-enrichment', now()->timestamp, 3600);
         } catch (Throwable $exception) {
             $status->recordFailure($this->customerId, $component === 'tracking' ? $ids : ($currentId === null ? [] : [$currentId]), $component, $exception);
             if ($exception instanceof ConnectionException || $exception instanceof ReceivableSyncInterrupted
