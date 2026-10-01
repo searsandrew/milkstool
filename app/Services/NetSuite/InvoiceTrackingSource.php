@@ -13,14 +13,14 @@ class InvoiceTrackingSource
     public function __construct(private SuiteQlClient $client) {}
 
     /** @return Generator<int, int> */
-    public function changedInvoices(int $customerId, CarbonImmutable $modifiedSince, CarbonImmutable $modifiedUntil): Generator
+    public function changedInvoices(int $customerId, CarbonImmutable $modifiedSince, CarbonImmutable $modifiedUntil, int $afterId = 0): Generator
     {
-        if ($customerId < 1 || $modifiedSince->greaterThan($modifiedUntil)) {
+        if ($customerId < 1 || $afterId < 0 || $modifiedSince->greaterThan($modifiedUntil)) {
             throw new InvalidArgumentException('Provide a customer and an ordered source timestamp window.');
         }
         $since = $modifiedSince->utc()->format('Y-m-d H:i:s');
         $until = $modifiedUntil->utc()->format('Y-m-d H:i:s');
-        $lastId = 0;
+        $lastId = $afterId;
         do {
             $page = $this->client->query(<<<SQL
                 SELECT DISTINCT invoice.id AS invoice_id, invoice.entity AS customer_id

@@ -157,10 +157,13 @@ class InvoiceSource
     }
 
     /** @return Generator<int, array<string, mixed>> */
-    public function invoices(int $customerId, ?CarbonImmutable $modifiedSince = null, ?CarbonImmutable $modifiedUntil = null): Generator
+    public function invoices(int $customerId, ?CarbonImmutable $modifiedSince = null, ?CarbonImmutable $modifiedUntil = null, int $afterId = 0): Generator
     {
         $this->assertPositiveId($customerId);
-        $lastId = 0;
+        if ($afterId < 0) {
+            throw new InvalidArgumentException('Invoice resume ID cannot be negative.');
+        }
+        $lastId = $afterId;
         $window = '';
 
         if (($modifiedSince === null) !== ($modifiedUntil === null) || ($modifiedSince !== null && $modifiedSince->greaterThan($modifiedUntil))) {

@@ -31,7 +31,7 @@ function processHealthProbes(): void
 it('proves each queue is processing and deduplicates probes while workers are stopped', function () {
     $this->artisan('milkstool:heartbeat')->assertSuccessful();
     $this->artisan('milkstool:heartbeat')->assertSuccessful();
-    $this->assertDatabaseCount('jobs', 7);
+    $this->assertDatabaseCount('jobs', 6);
     expect(app(ServiceHealth::class)->report()['healthy'])->toBeFalse();
     foreach (ServiceHealth::QUEUES as $queue) {
         Queue::connection('netsuite')->pop($queue)->fire();
@@ -152,7 +152,7 @@ it('reports failed and stale data even when all processes are healthy', function
     Http::assertNothingSent();
 });
 
-it('recognizes successful enrichment behind a queued probe without declaring the backlog complete', function () {
+it('allows optional legacy enrichment without requiring a dedicated worker for normal imports', function () {
     processHealthProbes();
     Cache::forget('milkstool:heartbeat:worker:invoice-enrichment');
     $company = Company::factory()->create(['id' => 16, 'is_active' => true]);
@@ -171,8 +171,8 @@ it('recognizes successful enrichment behind a queued probe without declaring the
     expect($health['runtime_healthy'])->toBeTrue();
     expect($health['data']['enrichment']['complete'])->toBeFalse();
     expect($health['data']['enrichment']['tracking_due'])->toBe(1);
-    expect(DB::table('jobs')->where('queue', 'invoice-enrichment')->count())->toBe(2);
+    expect(DB::table('jobs')->where('queue', 'invoice-enrichment')->count())->toBe(1);
     Http::assertSentCount(2);
-    $this->travel(1501)->seconds();
-    expect(collect(app(ServiceHealth::class)->report()['checks'])->firstWhere('name', 'worker_invoice-enrichment')['healthy'])->toBeFalse();
+    expect(collect($health['checks'])->pluck('name'))->not->toContain('worker_invoice-enrichment');
+    expect(Cache::get('milkstool:heartbeat:worker:invoice-enrichment'))->toBe(now()->timestamp);
 });

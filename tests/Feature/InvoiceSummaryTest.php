@@ -28,7 +28,7 @@ function summaryRecord(): array
 
 it('copies source summary values preserving zero missing values and discounts', function () {
     $invoice = summaryInvoice();
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()->push(sourcePage([sourceInvoice(['updated_at' => '2026-09-01 12:00:45', 'foreign_total' => '105'])]))->push(sourcePage([sourceInvoiceLine(['line_id' => '30', 'item_id' => '360'])]))->push(sourcePage([sourceInvoice(['updated_at' => '2026-09-01 12:00:45', 'foreign_total' => '105'])])),
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeCompleteInvoiceReads(Http::sequence()->push(sourcePage([sourceInvoice(['updated_at' => '2026-09-01 12:00:45', 'foreign_total' => '105'])]))->push(sourcePage([sourceInvoiceLine(['line_id' => '30', 'item_id' => '360'])]))->push(sourcePage([sourceInvoice(['updated_at' => '2026-09-01 12:00:45', 'foreign_total' => '105'])]))),
         'https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response(summaryRecord())]);
 
     $this->artisan('milkstool:sync-invoice-summary', ['customer' => 16, 'invoice' => 1347])->assertSuccessful();
@@ -43,14 +43,14 @@ it('copies source summary values preserving zero missing values and discounts', 
     expect($invoice->refresh()->hasCurrentInvoiceEnrichment())->toBeTrue();
     $invoice->update(['netsuite_updated_at' => '2026-09-02 12:00:00']);
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertJsonPath('data.invoice_summary', null);
-    Http::assertSentCount(5);
+    Http::assertSentCount(7);
 });
 
 it('preserves existing data when the source mismatches or changes', function (string $field, mixed $value) {
     $invoice = summaryInvoice();
     $record = summaryRecord();
     data_set($record, $field, $value);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()->push(sourcePage([sourceInvoice(['updated_at' => '2026-09-01 12:00:45', 'foreign_total' => '105'])]))->push(sourcePage([sourceInvoiceLine(['line_id' => '30', 'item_id' => '360'])]))->push(sourcePage([sourceInvoice(['updated_at' => '2026-09-01 12:00:45', 'foreign_total' => '105'])])),
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeCompleteInvoiceReads(Http::sequence()->push(sourcePage([sourceInvoice(['updated_at' => '2026-09-01 12:00:45', 'foreign_total' => '105'])]))->push(sourcePage([sourceInvoiceLine(['line_id' => '30', 'item_id' => '360'])]))->push(sourcePage([sourceInvoice(['updated_at' => '2026-09-01 12:00:45', 'foreign_total' => '105'])]))),
         'https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response($record)]);
 
     $this->artisan('milkstool:sync-invoice-summary', ['customer' => 16, 'invoice' => 1347])->assertFailed();
@@ -67,7 +67,7 @@ it('refuses incomplete or duplicate invoice item quantities', function (string $
     $invoice = summaryInvoice();
     $record = summaryRecord();
     data_set($record, $field, $value);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine()])),
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeCompleteInvoiceReads(Http::sequence()->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine()]))),
         'https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response($record)]);
 
     $this->artisan('milkstool:sync-invoice-summary', ['customer' => 16, 'invoice' => 1347])->assertFailed();

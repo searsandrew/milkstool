@@ -11,7 +11,7 @@ use InvalidArgumentException;
 
 class SyncInvoiceTracking
 {
-    public function __construct(private InvoiceTrackingSource $source) {}
+    public function __construct(private InvoiceTrackingSource $source, private StoreInvoiceTracking $store) {}
 
     /** @param list<int> $invoiceIds */
     public function handle(int $customerId, array $invoiceIds): int
@@ -37,18 +37,7 @@ class SyncInvoiceTracking
             }
             DB::transaction(function () use ($invoices, $tracking): void {
                 foreach ($invoices as $invoice) {
-                    $details = $invoice->invoice_details ?? [];
-                    if (($details['enrichment_error']['component'] ?? null) === 'tracking') {
-                        unset($details['enrichment_error']);
-                    }
-                    $invoice->invoice_details = [...$details,
-                        'tracking_dirty' => false,
-                        'tracking_numbers' => $tracking[$invoice->id],
-                        'tracking_scope' => 'related_sales_orders',
-                        'tracking_synced_at' => now()->utc()->toIso8601String(),
-                        'tracking_header_updated_at' => $invoice->netsuite_updated_at?->utc()->format('Y-m-d H:i:s'),
-                    ];
-                    $invoice->save();
+                    $this->store->handle($invoice, $tracking[$invoice->id]);
                 }
             });
 

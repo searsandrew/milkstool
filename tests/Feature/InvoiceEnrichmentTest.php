@@ -89,7 +89,7 @@ it('processes five invoices then schedules a continuation and skips completed in
 
                 return Http::response(sourcePage([sourceInvoiceLine(['transaction_id' => $match[1]])]));
             }
-            preg_match('/AND id = (\d+)/', $request['q'], $match);
+            preg_match('/AND id (?:= |IN \()(\d+)/', $request['q'], $match);
 
             return Http::response(sourcePage([sourceInvoice(['id' => $match[1]])]));
         },
@@ -110,7 +110,7 @@ it('processes five invoices then schedules a continuation and skips completed in
     Queue::connection('netsuite')->pop('invoice-enrichment')->fire();
     expect(Transaction::query()->needsInvoiceEnrichment()->exists())->toBeFalse();
     $this->assertDatabaseCount('jobs', 0);
-    Http::assertSentCount(34);
+    Http::assertSentCount(46);
 });
 
 it('skips inactive customers without fetching or queueing more enrichment', function () {

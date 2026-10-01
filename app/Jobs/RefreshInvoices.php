@@ -5,7 +5,7 @@ namespace App\Jobs;
 use App\Actions\SyncInvoices;
 use App\Exceptions\ReceivableSyncInterrupted;
 use App\Models\Company;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Queue\Queueable;
@@ -13,9 +13,10 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\Middleware\ThrottlesExceptions;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
-class RefreshInvoices implements ShouldBeUnique, ShouldQueue
+class RefreshInvoices implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Queueable;
     use WaitsForNetSuite {
@@ -62,7 +63,11 @@ class RefreshInvoices implements ShouldBeUnique, ShouldQueue
         }
 
         try {
-            $sync->handle($this->customerId, incremental: true);
+            $result = $sync->handle($this->customerId, incremental: true, maxBatches: 1);
+            if (! $result['complete']) {
+                self::dispatch($this->customerId);
+            }
+            Cache::put('milkstool:heartbeat:worker:invoices', now()->timestamp, 3600);
         } catch (ConnectionException|ReceivableSyncInterrupted $exception) {
             throw $exception;
         } catch (RequestException $exception) {

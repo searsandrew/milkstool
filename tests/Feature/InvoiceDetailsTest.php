@@ -30,7 +30,7 @@ it('mirrors invoice addresses and terms and exposes them only on authorized invo
     $this->getJson('/api/v1/customers/16/transactions')->assertOk()->assertJsonMissingPath('data.0.invoice_details');
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:17']);
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertForbidden()->assertDontSee('Historical Billing');
-    Http::assertSentCount(5);
+    Http::assertSentCount(7);
 });
 
 it('distinguishes legacy invoices from synced invoices whose optional details are absent', function () {
@@ -56,7 +56,7 @@ it('backfills only missing invoice headers without changing lines balances or fi
     Transaction::factory()->for($company)->create(['type' => 'CustCred']);
     Transaction::factory()->for($company)->create(['type' => 'CustInvc', 'invoice_details_synced_at' => now(), 'invoice_details' => ['terms_name' => 'Already imported']]);
     $header = sourceInvoice(['billing_address' => 'Original billing', 'foreign_amount_unpaid' => '0']);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()->push(sourcePage([$header]))->push(sourcePage([$header]))]);
+    Http::fake(['https://netsuite.example/*' => fakeCompleteInvoiceReads(Http::sequence()->push(sourcePage([$header]))->push(sourcePage([$header])))]);
 
     $this->artisan('milkstool:backfill-invoice-details')->assertSuccessful();
 
@@ -139,9 +139,9 @@ it('resumes after a later batch fails without reloading completed invoices', fun
     }
     $first = array_slice($headers, 0, 50);
     $last = array_slice($headers, 50);
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+    Http::fake(['https://netsuite.example/*' => fakeCompleteInvoiceReads(Http::sequence()
         ->push(sourcePage($first))->push(sourcePage($first))->push([], 403)
-        ->push(sourcePage($last))->push(sourcePage($last))]);
+        ->push(sourcePage($last))->push(sourcePage($last)))]);
 
     $this->artisan('milkstool:backfill-invoice-details')->assertFailed();
     expect(Transaction::query()->whereNotNull('invoice_details_synced_at')->count())->toBe(50);

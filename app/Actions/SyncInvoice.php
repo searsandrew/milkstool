@@ -6,13 +6,12 @@ use App\Exceptions\ReceivableSyncInterrupted;
 use App\Models\Company;
 use App\Models\Transaction;
 use App\Services\NetSuite\InvoiceSource;
-use App\Services\NetSuite\InvoiceSummarySource;
 use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 
 class SyncInvoice
 {
-    public function __construct(private InvoiceSource $source, private StoreInvoice $store, private InvoiceSummarySource $summaries) {}
+    public function __construct(private InvoiceSource $source, private ImportInvoiceBatch $import) {}
 
     public function handle(int $customerId, int $invoiceId): Transaction
     {
@@ -30,19 +29,13 @@ class SyncInvoice
 
         try {
             $invoice = $this->source->invoice($customerId, $invoiceId);
-            $lines = $this->source->linesForInvoices($customerId, [$invoiceId])[$invoiceId];
-            $summary = $this->summaries->forInvoice($customerId, $invoice, $lines);
-            $latest = $this->source->invoice($customerId, $invoiceId);
+            $this->import->handle($company, [$invoice], function () use ($lock): void {
+                if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
+                    throw new ReceivableSyncInterrupted('Invoice sync lock expired. Retry the command.');
+                }
+            }, function (int $lines): void {});
 
-            if ($invoice != $latest) {
-                throw new ReceivableSyncInterrupted('The invoice changed during import. Retry the sync.');
-            }
-
-            if (! $lock->isOwnedByCurrentProcess()) {
-                throw new ReceivableSyncInterrupted('The invoice sync lock expired. Retry the sync.');
-            }
-
-            return $this->store->handle($company, $invoice, $lines, $summary);
+            return $company->transactions()->where('id', $invoiceId)->firstOrFail();
         } finally {
             $lock->release();
         }
