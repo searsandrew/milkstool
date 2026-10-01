@@ -2,9 +2,11 @@
 
 namespace App\Services\NetSuite;
 
+use App\Exceptions\SalesOrderSyncInterrupted;
 use Carbon\CarbonImmutable;
 use Generator;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -20,15 +22,21 @@ class SalesOrderSource
 
     public function currentTime(): CarbonImmutable
     {
-        $page = $this->client->query("SELECT TO_CHAR(SYS_EXTRACT_UTC(CURRENT_TIMESTAMP), 'YYYY-MM-DD HH24:MI:SS') AS current_time FROM DUAL");
-
-        if (count($page['items']) !== 1 || $page['hasMore']) {
-            throw new RuntimeException('NetSuite did not return a reliable source clock.');
+        try {
+            $page = $this->client->query("SELECT TO_CHAR(SYS_EXTRACT_UTC(CURRENT_TIMESTAMP), 'YYYY-MM-DD HH24:MI:SS') AS current_time FROM DUAL");
+        } catch (ValidationException|RuntimeException $exception) {
+            throw new SalesOrderSyncInterrupted('NetSuite did not return a reliable source clock.', 0, $exception);
         }
 
-        Validator::make($page['items'][0], [
+        if (count($page['items']) !== 1 || $page['hasMore']) {
+            throw new SalesOrderSyncInterrupted('NetSuite did not return a reliable source clock.');
+        }
+
+        if (Validator::make($page['items'][0], [
             'current_time' => ['required', 'date_format:Y-m-d H:i:s'],
-        ])->validate();
+        ])->fails()) {
+            throw new SalesOrderSyncInterrupted('NetSuite did not return a reliable source clock.');
+        }
 
         return CarbonImmutable::parse($page['items'][0]['current_time'], 'UTC');
     }

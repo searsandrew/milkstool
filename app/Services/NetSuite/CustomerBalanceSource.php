@@ -4,11 +4,8 @@ namespace App\Services\NetSuite;
 
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Validator;
 use InvalidArgumentException;
-use Searsandrew\BriarRose\BriarRoseManager;
-use Throwable;
 
 class CustomerBalanceSource
 {
@@ -19,7 +16,7 @@ class CustomerBalanceSource
         'consolUnbilledOrders' => 'consolidated_unbilled_orders', 'consolDepositBalance' => 'consolidated_deposit_balance',
     ];
 
-    public function __construct(private BriarRoseManager $briarRose) {}
+    public function __construct(private NetSuiteRestClient $client) {}
 
     /** @return array<string, mixed> */
     public function find(int $customerId): array
@@ -27,9 +24,9 @@ class CustomerBalanceSource
         if ($customerId < 1) {
             throw new InvalidArgumentException('NetSuite IDs must be positive integers.');
         }
-        $record = retry(3, fn (): mixed => $this->briarRose->rest()->record('customer')
+        $record = $this->client->record('customer')
             ->getFields($customerId, ['id', 'currency', 'subsidiary', ...array_keys(self::AMOUNTS)])
-            ->throw()->json(), 500, fn (Throwable $exception): bool => $exception instanceof ConnectionException);
+            ->throw()->json();
         $rules = [
             'id' => ['required', 'integer', 'in:'.$customerId],
             'currency' => ['nullable', 'array'], 'currency.id' => ['required_with:currency', 'integer', 'min:1'],

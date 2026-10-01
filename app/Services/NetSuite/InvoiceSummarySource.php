@@ -5,16 +5,15 @@ namespace App\Services\NetSuite;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\Validator;
-use Searsandrew\BriarRose\BriarRoseManager;
 
 class InvoiceSummarySource
 {
-    public function __construct(private BriarRoseManager $briarRose) {}
+    public function __construct(private NetSuiteRestClient $client) {}
 
     /** @return array<string, mixed> */
     public function fetch(int $customerId, int $invoiceId): array
     {
-        $record = $this->briarRose->rest()->record('invoice')->get($invoiceId, ['expandSubResources' => 'true'])->throw()->json();
+        $record = $this->client->record('invoice')->get($invoiceId, ['expandSubResources' => 'true'])->throw()->json();
         $fields = ['subtotal' => 'subtotal', 'discountTotal' => 'discount_total', 'taxTotal' => 'tax_total',
             'shippingCost' => 'shipping_cost', 'handlingCost' => 'handling_cost', 'total' => 'total'];
         $rules = ['item.items' => ['present', 'array', 'list'],

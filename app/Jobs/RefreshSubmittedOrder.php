@@ -17,6 +17,7 @@ use Throwable;
 class RefreshSubmittedOrder implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
+    use WaitsForNetSuite;
 
     public int $timeout = 300;
 

@@ -16,6 +16,7 @@ use Throwable;
 class RefreshCreditMemos implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
+    use WaitsForNetSuite;
 
     public int $tries = 3;
 

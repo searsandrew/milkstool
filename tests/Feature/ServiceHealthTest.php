@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\ApiClient;
+use App\Models\Company;
 use App\Services\ServiceHealth;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
@@ -128,4 +129,23 @@ it('schedules heartbeats every minute only when scheduled sync is enabled', func
     expect($event->filtersPass(app()))->toBeTrue();
     config()->set('netsuite-sync.scheduled', false);
     expect($event->filtersPass(app()))->toBeFalse();
+});
+
+it('reports failed and stale data even when all processes are healthy', function () {
+    processHealthProbes();
+    $attributes = ['is_active' => true];
+    foreach (['sales_orders', 'invoices', 'credit_memos', 'balance', 'payments'] as $prefix) {
+        $attributes[$prefix.'_synced_at'] = now();
+    }
+    $attributes['invoices_synced_at'] = now()->subHours(7);
+    $attributes['invoices_sync_error'] = 'Background refresh failed';
+    $attributes['invoices_next_sync_at'] = now()->addHours(6);
+    Company::factory()->create($attributes);
+
+    $report = app(ServiceHealth::class)->report();
+
+    expect($report['runtime_healthy'])->toBeTrue();
+    expect($report['healthy'])->toBeFalse();
+    expect($report['data']['types']['invoices'])->toMatchArray(['failed' => 1, 'overdue' => 1]);
+    Http::assertNothingSent();
 });

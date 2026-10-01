@@ -2,24 +2,17 @@
 
 namespace App\Services\NetSuite;
 
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Validator;
 use RuntimeException;
-use Searsandrew\BriarRose\BriarRoseManager;
-use Throwable;
 
 class SuiteQlClient
 {
-    public function __construct(private BriarRoseManager $briarRose) {}
+    public function __construct(private NetSuiteRestClient $client) {}
 
     /** @return array{items: list<array<string, mixed>>, hasMore: bool} */
     public function query(string $sql): array
     {
-        $page = retry(3,
-            fn (): mixed => $this->briarRose->rest()->suiteql()->query($sql, ['limit' => 1000])->throw()->json(),
-            500,
-            fn (Throwable $exception): bool => $exception instanceof ConnectionException,
-        );
+        $page = $this->client->suiteql()->query($sql, ['limit' => 1000])->throw()->json();
         Validator::make((array) $page, [
             'items' => ['present', 'array', 'list'],
             'items.*' => ['required', 'array'],
