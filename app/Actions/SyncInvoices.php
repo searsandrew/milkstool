@@ -77,7 +77,7 @@ class SyncInvoices
                 'invoices_next_sync_at' => $company->nextRefreshAt(),
                 'invoices_backfilled_at' => $company->invoices_backfilled_at ?? now()])->save();
 
-            if ($company->transactions()->needsInvoiceEnrichment()->exists()) {
+            if ($company->transactions()->needsInvoiceWork()->exists()) {
                 RefreshInvoiceDetails::dispatch($customerId);
             }
 

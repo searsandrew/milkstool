@@ -2,11 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\SyncInvoiceTracking as SyncTracking;
 use App\Models\Company;
-use App\Services\NetSuite\InvoiceTrackingSource;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
 
@@ -16,7 +14,7 @@ class SyncInvoiceTracking extends Command
 
     protected $description = 'Refresh tracking numbers for shipments on invoice sales orders without reimporting financial history';
 
-    public function handle(InvoiceTrackingSource $source): int
+    public function handle(SyncTracking $sync): int
     {
         $customerId = filter_var($this->argument('customer'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $invoiceId = $this->option('invoice') === null ? null : filter_var($this->option('invoice'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
@@ -37,34 +35,10 @@ class SyncInvoiceTracking extends Command
 
             return self::FAILURE;
         }
-        $lock = Cache::lock('netsuite-invoices:'.$customerId, 600);
-        if (! $lock->get()) {
-            $this->error('An invoice sync is already running for this customer.');
-
-            return self::FAILURE;
-        }
         try {
             $completed = 0;
-            $query->chunkById(25, function ($invoices) use ($source, $customerId, $lock, &$completed): void {
-                $ids = $invoices->modelKeys();
-                $tracking = $source->fetch($customerId, $ids);
-                if ($tracking !== $source->fetch($customerId, $ids)) {
-                    throw new RuntimeException('Tracking changed during retrieval. Retry the command.');
-                }
-                if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
-                    throw new RuntimeException('Invoice sync lock expired. Retry the command.');
-                }
-                DB::transaction(function () use ($invoices, $tracking): void {
-                    foreach ($invoices as $invoice) {
-                        $invoice->invoice_details = array_replace($invoice->invoice_details ?? [], [
-                            'tracking_numbers' => $tracking[$invoice->id],
-                            'tracking_scope' => 'related_sales_orders',
-                            'tracking_synced_at' => now()->utc()->toIso8601String(),
-                        ]);
-                        $invoice->save();
-                    }
-                });
-                $completed += $invoices->count();
+            $query->chunkById(25, function ($invoices) use ($sync, $customerId, &$completed): void {
+                $completed += $sync->handle($customerId, $invoices->modelKeys());
                 $this->line('Updated tracking for '.$completed.' invoices.');
             });
             $this->info('Invoice tracking refresh complete.');
@@ -74,8 +48,6 @@ class SyncInvoiceTracking extends Command
             $this->error($exception instanceof RuntimeException ? $exception->getMessage() : 'Tracking refresh failed; existing data was preserved for the failed batch. Check source permissions and retry.');
 
             return self::FAILURE;
-        } finally {
-            $lock->release();
         }
     }
 }

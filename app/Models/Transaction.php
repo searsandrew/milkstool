@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Database\Factories\TransactionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -48,6 +49,26 @@ class Transaction extends Model
         });
     }
 
+    /** @param Builder<Transaction> $query */
+    public function scopeNeedsInvoiceTracking(Builder $query): void
+    {
+        $query->where('type', 'CustInvc')->where(function (Builder $query): void {
+            $query->whereNull('invoice_details->tracking_synced_at')
+                ->orWhere('invoice_details->tracking_synced_at', '<=', now()->subHours(6)->utc()->toIso8601String())
+                ->orWhere(fn (Builder $query) => $query->where('invoice_details->tracking_synced_at', '<=', now()->subMinutes(15)->utc()->toIso8601String())
+                    ->whereHas('company', fn (Builder $company) => $company->where('portal_last_active_at', '>=', now()->subDay())))
+                ->orWhereNull('invoice_details->tracking_header_updated_at')
+                ->orWhereColumn('invoice_details->tracking_header_updated_at', '!=', 'netsuite_updated_at');
+        });
+    }
+
+    /** @param Builder<Transaction> $query */
+    public function scopeNeedsInvoiceWork(Builder $query): void
+    {
+        $query->where(fn (Builder $query) => $query->needsInvoiceEnrichment()
+            ->orWhere(fn (Builder $query) => $query->needsInvoiceTracking()));
+    }
+
     public function hasCurrentInvoiceEnrichment(): bool
     {
         return $this->type === 'CustInvc' && ($this->invoice_details['summary']['schema_version'] ?? null) === 1
@@ -55,10 +76,21 @@ class Transaction extends Model
             && ($this->invoice_details['summary']['header_updated_at'] ?? null) === $this->netsuite_updated_at->utc()->format('Y-m-d H:i:s');
     }
 
+    public function hasCurrentInvoiceTracking(): bool
+    {
+        $syncedAt = $this->invoice_details['tracking_synced_at'] ?? null;
+
+        $minutes = $this->company?->portal_last_active_at?->gte(now()->subDay()) ? 15 : 360;
+
+        return is_string($syncedAt) && CarbonImmutable::parse($syncedAt)->gt(now()->subMinutes($minutes))
+            && $this->netsuite_updated_at !== null
+            && ($this->invoice_details['tracking_header_updated_at'] ?? null) === $this->netsuite_updated_at->utc()->format('Y-m-d H:i:s');
+    }
+
     /** @param array<string, mixed> $invoice */
     public function fillInvoiceDetails(array $invoice): void
     {
-        $details = array_intersect_key($this->invoice_details ?? [], array_flip(['tracking_numbers', 'tracking_scope', 'tracking_synced_at', 'summary']));
+        $details = array_intersect_key($this->invoice_details ?? [], array_flip(['tracking_numbers', 'tracking_scope', 'tracking_synced_at', 'tracking_header_updated_at', 'enrichment_error', 'summary']));
         foreach (['billing_address', 'shipping_address', 'terms_name', 'ship_date', 'shipping_method'] as $field) {
             $details[$field] = $invoice[$field] ?? null;
         }

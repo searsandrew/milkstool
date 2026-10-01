@@ -49,7 +49,7 @@ function sourceInvoiceRecord(?array $lines = null, array $header = []): array
 {
     $invoice = sourceInvoice($header);
     $items = collect($lines ?? [sourceInvoiceLine()])->filter(fn (array $line): bool => $line['mainline'] !== 'T' && $line['taxline'] !== 'T'
-        && $line['discount_line'] !== 'T' && ($line['item_type'] ?? null) !== 'ShipItem')->map(fn (array $line): array => [
+        && $line['discount_line'] !== 'T' && ($line['kit_component'] ?? null) !== 'T' && ($line['item_type'] ?? null) !== 'ShipItem')->map(fn (array $line): array => [
             'line' => $line['line_id'], 'item' => ['id' => $line['item_id'] ?? null], 'quantityRemaining' => 3, 'quantityOrdered' => 5,
         ])->values()->all();
 

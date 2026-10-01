@@ -24,6 +24,7 @@ class HealthCheck extends Command
                     collect($report['data']['types'])->map(fn (array $counts, string $type): array => [$type, ...array_values($counts)])->values()->all());
                 $this->line('Retained failed jobs: '.$report['data']['retained_failed_jobs']);
                 $this->line('Invoices missing stored summary: '.$report['data']['enrichment']['missing_stored_summary'].'. Pending or outdated enrichment: '.$report['data']['enrichment']['pending']);
+                $this->line('Tracking due: '.$report['data']['enrichment']['tracking_due'].'; enrichment last-attempt errors: '.$report['data']['enrichment']['last_attempt_errors']);
             }
             $this->line('Scheduler heartbeat must be within 3 minutes; each queue heartbeat within 25 minutes (allows a 20-minute import).');
             $this->line('Heartbeat checks show recent processing, not guaranteed future availability. NetSuite credentials are checked for presence only.');

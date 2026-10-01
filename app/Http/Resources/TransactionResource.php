@@ -41,6 +41,10 @@ class TransactionResource extends JsonResource
             'invoice_enrichment' => $this->when($this->type === 'CustInvc' && $this->relationLoaded('lines'), fn () => [
                 'status' => $this->resource->hasCurrentInvoiceEnrichment() ? 'current' : 'pending',
                 'scope' => 'summary_and_invoice_item_quantities',
+                'complete' => $this->resource->hasCurrentInvoiceEnrichment() && $this->resource->hasCurrentInvoiceTracking(),
+                'tracking_status' => $this->resource->hasCurrentInvoiceTracking() ? 'current' : 'pending',
+                'tracking_scope' => 'related_sales_orders',
+                'last_error' => $this->invoice_details['enrichment_error'] ?? null,
                 'quantity_basis' => 'invoice_record',
             ]),
             'invoice_summary' => $this->when($this->type === 'CustInvc' && $this->relationLoaded('lines'), fn () => ($this->invoice_details['summary']['source_modified_at'] ?? null) === $this->netsuite_updated_at?->utc()->toIso8601String()

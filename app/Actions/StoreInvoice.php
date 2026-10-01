@@ -48,7 +48,11 @@ class StoreInvoice
                 $transaction->invoice_details = [...$transaction->invoice_details, 'summary' => $storedSummary];
             }
             if ($summary !== null) {
-                $transaction->invoice_details = [...$transaction->invoice_details, 'summary' => $summary];
+                $details = $transaction->invoice_details;
+                if (($details['enrichment_error']['component'] ?? null) === 'summary') {
+                    unset($details['enrichment_error']);
+                }
+                $transaction->invoice_details = [...$details, 'summary' => $summary];
             }
             $transaction->save();
 

@@ -81,6 +81,9 @@ it('processes five invoices then schedules a continuation and skips completed in
     }
     Http::fake([
         'https://netsuite.example/services/rest/query/v1/suiteql*' => function ($request) {
+            if (str_contains($request['q'], 'itemfulfillmentpackage')) {
+                return Http::response(sourcePage([]));
+            }
             if (str_contains($request['q'], 'FROM transactionline')) {
                 preg_match('/transactionline.transaction IN \((\d+)\)/', $request['q'], $match);
 
@@ -107,7 +110,7 @@ it('processes five invoices then schedules a continuation and skips completed in
     Queue::connection('netsuite')->pop('invoices')->fire();
     expect(Transaction::query()->needsInvoiceEnrichment()->exists())->toBeFalse();
     $this->assertDatabaseCount('jobs', 0);
-    Http::assertSentCount(30);
+    Http::assertSentCount(34);
 });
 
 it('skips inactive customers without fetching or queueing more enrichment', function () {
@@ -115,8 +118,27 @@ it('skips inactive customers without fetching or queueing more enrichment', func
     Transaction::factory()->for($company)->create(['type' => 'CustInvc']);
     Queue::fake();
 
-    (new RefreshInvoiceDetails(16))->handle(app(SyncInvoice::class));
+    app()->call([new RefreshInvoiceDetails(16), 'handle']);
 
     Queue::assertNothingPushed();
     Http::assertNothingSent();
 });
+
+it('accepts an omitted kit component only when its source parent is represented in REST', function (bool $validParent) {
+    Company::factory()->create(['id' => 16]);
+    fakeSingleInvoice([
+        sourceInvoiceLine(['item_type' => 'Kit']),
+        sourceInvoiceLine(['line_id' => '2', 'item_id' => '56', 'item_type' => 'InvtPart', 'kit_component' => 'T', 'kit_parent_line_id' => $validParent ? '1' : '99', 'amount' => null, 'rate' => null]),
+    ]);
+
+    if (! $validParent) {
+        expect(fn () => app(SyncInvoice::class)->handle(16, 1347))->toThrow(ReceivableSyncInterrupted::class);
+        $this->assertDatabaseCount('transactions', 0);
+    } else {
+        $invoice = app(SyncInvoice::class)->handle(16, 1347);
+        expect($invoice->hasCurrentInvoiceEnrichment())->toBeTrue();
+        expect($invoice->invoice_details['summary']['line_quantities'])->toHaveCount(1);
+        expect($invoice->lines()->where('netsuite_line_id', 2)->sole()->raw_payload)->toMatchArray(['kit_component' => 'T', 'kit_parent_line_id' => '1']);
+        $this->assertDatabaseCount('transaction_lines', 2);
+    }
+})->with([true, false]);

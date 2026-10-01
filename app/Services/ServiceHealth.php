@@ -82,21 +82,23 @@ class ServiceHealth
                 $types[$prefix]['unfinished'] += (int) ($started !== null && ($success === null || $started->gt($success)) && $started->lt(now()->subMinutes(25)));
             }
         }
+        $enrichment = app(InvoiceEnrichmentStatus::class)->report();
+        unset($enrichment['customers']);
         $failedJobs = DB::connection(config('queue.failed.database'))->table(config('queue.failed.table'))
             ->where('connection', 'netsuite')->count();
-        $invoices = Transaction::query()->where('type', 'CustInvc');
+        $invoices = Transaction::query()->where('type', 'CustInvc')->whereHas('company', fn ($query) => $query->where('is_active', true));
         $missingSummary = (clone $invoices)->whereNull('invoice_details->summary')->count();
 
         return [
-            'healthy' => collect($types)->every(fn (array $counts): bool => array_sum($counts) === 0),
+            'healthy' => collect($types)->every(fn (array $counts): bool => array_sum($counts) === 0) && $enrichment['complete'],
             'customers' => $companies->count(),
             'types' => $types,
             'retained_failed_jobs' => $failedJobs,
             'freshness_grace_minutes' => 30,
-            'enrichment' => [
+            'enrichment' => [...$enrichment,
                 'invoices' => $invoices->count(),
                 'missing_stored_summary' => $missingSummary,
-                'pending' => Transaction::query()->needsInvoiceEnrichment()->count(),
+                'pending' => $enrichment['summary_pending'],
                 'status' => 'tracked_separately_from_financial_sync',
             ],
         ];

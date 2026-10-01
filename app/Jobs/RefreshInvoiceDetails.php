@@ -3,8 +3,10 @@
 namespace App\Jobs;
 
 use App\Actions\SyncInvoice;
+use App\Actions\SyncInvoiceTracking;
 use App\Exceptions\ReceivableSyncInterrupted;
 use App\Models\Company;
+use App\Services\InvoiceEnrichmentStatus;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -41,28 +43,38 @@ class RefreshInvoiceDetails implements ShouldBeUniqueUntilProcessing, ShouldQueu
         return [60, 300];
     }
 
-    public function handle(SyncInvoice $sync): void
+    public function handle(SyncInvoice $sync, SyncInvoiceTracking $tracking, InvoiceEnrichmentStatus $status): void
     {
         $company = Company::query()->where('is_active', true)->find($this->customerId);
         if ($company === null) {
             return;
         }
+        $ids = [];
+        $currentId = null;
+        $component = 'summary';
         try {
-            $ids = $company->transactions()->needsInvoiceEnrichment()->orderByDesc('transaction_date')->orderByDesc('id')->limit(5)->pluck('id');
-            foreach ($ids as $id) {
-                $sync->handle($this->customerId, (int) $id);
+            $invoices = $company->transactions()->needsInvoiceWork()
+                ->orderBy('invoice_details->tracking_synced_at')->orderByDesc('transaction_date')->orderByDesc('id')->limit(5)->get();
+            $ids = $invoices->modelKeys();
+            foreach ($invoices as $invoice) {
+                $currentId = (int) $invoice->id;
+                if (! $invoice->hasCurrentInvoiceEnrichment()) {
+                    $sync->handle($this->customerId, $currentId);
+                }
             }
-            if ($company->transactions()->needsInvoiceEnrichment()->exists()) {
+            if ($ids !== []) {
+                $component = 'tracking';
+                $tracking->handle($this->customerId, $ids);
+            }
+            if ($company->transactions()->needsInvoiceWork()->exists()) {
                 self::dispatch($this->customerId)->delay(now()->addSeconds(30));
             }
-        } catch (ConnectionException|ReceivableSyncInterrupted $exception) {
-            throw $exception;
-        } catch (RequestException $exception) {
-            if (in_array($exception->response->status(), [408, 429], true) || $exception->response->serverError()) {
+        } catch (Throwable $exception) {
+            $status->recordFailure($this->customerId, $component === 'tracking' ? $ids : ($currentId === null ? [] : [$currentId]), $component, $exception);
+            if ($exception instanceof ConnectionException || $exception instanceof ReceivableSyncInterrupted
+                || ($exception instanceof RequestException && (in_array($exception->response->status(), [408, 429], true) || $exception->response->serverError()))) {
                 throw $exception;
             }
-            $this->fail($exception);
-        } catch (Throwable $exception) {
             $this->fail($exception);
         }
     }

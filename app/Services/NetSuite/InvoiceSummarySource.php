@@ -38,8 +38,11 @@ class InvoiceSummarySource
             }
         }
         foreach ($lines as $line) {
+            $parent = $sourceLines->get($line['kit_parent_line_id'] ?? null);
+            $coveredByKit = ($line['kit_component'] ?? null) === 'T' && ($parent['item_type'] ?? null) === 'Kit'
+                && $quantities->has($parent['line_id']);
             if ($line['mainline'] !== 'T' && $line['taxline'] !== 'T' && $line['discount_line'] !== 'T'
-                && ($line['item_type'] ?? null) !== 'ShipItem' && isset($line['item_id']) && ! $quantities->has($line['line_id'])) {
+                && ($line['item_type'] ?? null) !== 'ShipItem' && isset($line['item_id']) && ! $coveredByKit && ! $quantities->has($line['line_id'])) {
                 throw new ReceivableSyncInterrupted('Invoice item quantities are incomplete for the source lines.');
             }
         }
