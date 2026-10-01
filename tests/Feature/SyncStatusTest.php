@@ -114,6 +114,7 @@ it('reports global queue states and scopes failed jobs without exposing their pa
         ['name' => 'credit-memos', 'ready' => 0, 'delayed' => 1, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
         ['name' => 'balances', 'ready' => 1, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
         ['name' => 'payments', 'ready' => 0, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
+        ['name' => 'invoice-enrichment', 'ready' => 0, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
     ]);
     expect(Artisan::output())->not->toContain('private payload', 'private exception');
     $this->assertDatabaseCount('jobs', 9);
@@ -155,7 +156,7 @@ it('reports billing freshness independently from sales orders', function (string
 
     expect($report['type'])->toBe($type);
     expect($report['summary'][$prefix])->toBe(1);
-    expect($report['customers'][0]['last_full_sync_at'])->toBe($report['customers'][0]['last_success_at']);
+    expect($report['customers'][0]['last_full_sync_at'])->toBe($type === 'invoices' ? null : $report['customers'][0]['last_success_at']);
     expect($report['customers'][0])->toMatchArray(['status' => 'current', 'needs_attention' => false, $countKey => 1]);
     $this->artisan('milkstool:sync-status', ['--type' => $type, '--customer' => 16])->assertSuccessful();
     $company->forceFill([$prefix.'_sync_error' => 'Failed'])->save();

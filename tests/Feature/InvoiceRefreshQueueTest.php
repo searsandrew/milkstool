@@ -2,6 +2,7 @@
 
 use App\Actions\SyncInvoices;
 use App\Exceptions\ReceivableSyncInterrupted;
+use App\Jobs\RefreshInvoiceDetails;
 use App\Jobs\RefreshInvoices;
 use App\Models\Company;
 use Carbon\CarbonImmutable;
@@ -54,7 +55,7 @@ it('lists due customers without enqueueing in dry run mode', function () {
 
 it('runs a serialized queued refresh and makes the customer no longer due', function () {
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
-        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([]))]);
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([['current_time' => '2026-09-16 12:00:00']]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([]))]);
     RefreshInvoices::dispatch(16);
 
     $queued = Queue::connection('netsuite')->pop('invoices');
@@ -66,7 +67,7 @@ it('runs a serialized queued refresh and makes the customer no longer due', func
     expect(Company::query()->sole()->invoices_next_sync_at->format('Y-m-d H:i:s'))->toBe('2026-09-16 18:00:00');
     $this->artisan('milkstool:dispatch-invoice-refreshes', ['--dry-run' => true])
         ->expectsOutput('0 customers due. No jobs queued.')->assertSuccessful();
-    Http::assertSentCount(4);
+    Http::assertSentCount(5);
 });
 
 it('allows the queue to retry transient NetSuite failures', function (int $status) {
@@ -154,3 +155,23 @@ it('skips a customer deactivated after dispatch', function () {
     (new RefreshInvoices(16))->handle(app(SyncInvoices::class));
     Http::assertNothingSent();
 });
+
+it('defers both invoice queues while the other worker holds the customer without exhausting exception retries', function (string $jobClass, string $queue) {
+    $lock = Cache::lock('laravel-queue-overlap:invoice-work:16', 1260);
+    $lock->get();
+    $jobClass::dispatch(16);
+
+    for ($attempt = 0; $attempt < 4; $attempt++) {
+        Queue::connection('netsuite')->pop($queue)->fire();
+        $this->travel(61)->seconds();
+    }
+
+    $this->assertDatabaseCount('jobs', 1);
+    $this->assertDatabaseCount('failed_jobs', 0);
+    expect(Company::findOrFail(16)->invoices_sync_started_at)->toBeNull();
+    Http::assertNothingSent();
+    $lock->release();
+})->with([
+    [RefreshInvoices::class, 'invoices'],
+    [RefreshInvoiceDetails::class, 'invoice-enrichment'],
+]);

@@ -29,7 +29,7 @@ function processHealthProbes(): void
 it('proves each queue is processing and deduplicates probes while workers are stopped', function () {
     $this->artisan('milkstool:heartbeat')->assertSuccessful();
     $this->artisan('milkstool:heartbeat')->assertSuccessful();
-    $this->assertDatabaseCount('jobs', 6);
+    $this->assertDatabaseCount('jobs', 7);
     expect(app(ServiceHealth::class)->report()['healthy'])->toBeFalse();
     foreach (ServiceHealth::QUEUES as $queue) {
         Queue::connection('netsuite')->pop($queue)->fire();

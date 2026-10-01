@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Carbon\CarbonImmutable;
 use Database\Factories\TransactionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -54,9 +53,8 @@ class Transaction extends Model
     {
         $query->where('type', 'CustInvc')->where(function (Builder $query): void {
             $query->whereNull('invoice_details->tracking_synced_at')
-                ->orWhere('invoice_details->tracking_synced_at', '<=', now()->subHours(6)->utc()->toIso8601String())
-                ->orWhere(fn (Builder $query) => $query->where('invoice_details->tracking_synced_at', '<=', now()->subMinutes(15)->utc()->toIso8601String())
-                    ->whereHas('company', fn (Builder $company) => $company->where('portal_last_active_at', '>=', now()->subDay())))
+                ->orWhere('invoice_details->tracking_dirty', true)
+                ->orWhereNull('netsuite_updated_at')
                 ->orWhereNull('invoice_details->tracking_header_updated_at')
                 ->orWhereColumn('invoice_details->tracking_header_updated_at', '!=', 'netsuite_updated_at');
         });
@@ -80,9 +78,8 @@ class Transaction extends Model
     {
         $syncedAt = $this->invoice_details['tracking_synced_at'] ?? null;
 
-        $minutes = $this->company?->portal_last_active_at?->gte(now()->subDay()) ? 15 : 360;
-
-        return is_string($syncedAt) && CarbonImmutable::parse($syncedAt)->gt(now()->subMinutes($minutes))
+        return $this->type === 'CustInvc' && is_string($syncedAt)
+            && ! ($this->invoice_details['tracking_dirty'] ?? false)
             && $this->netsuite_updated_at !== null
             && ($this->invoice_details['tracking_header_updated_at'] ?? null) === $this->netsuite_updated_at->utc()->format('Y-m-d H:i:s');
     }
@@ -90,7 +87,7 @@ class Transaction extends Model
     /** @param array<string, mixed> $invoice */
     public function fillInvoiceDetails(array $invoice): void
     {
-        $details = array_intersect_key($this->invoice_details ?? [], array_flip(['tracking_numbers', 'tracking_scope', 'tracking_synced_at', 'tracking_header_updated_at', 'enrichment_error', 'summary']));
+        $details = array_intersect_key($this->invoice_details ?? [], array_flip(['tracking_dirty', 'tracking_numbers', 'tracking_scope', 'tracking_synced_at', 'tracking_header_updated_at', 'enrichment_error', 'summary']));
         foreach (['billing_address', 'shipping_address', 'terms_name', 'ship_date', 'shipping_method'] as $field) {
             $details[$field] = $invoice[$field] ?? null;
         }

@@ -76,16 +76,16 @@ it('audits every active customer locally and queues bounded deduplicated recover
     Http::assertNothingSent();
 });
 
-it('detects tracking changes independently of an unchanged invoice timestamp', function (bool $active, int $minutes, bool $due) {
+it('refreshes invalidated tracking without expiring unchanged shipment history', function (bool $active, int $minutes, bool $due) {
     $company = Company::factory()->create(['id' => 16, 'is_active' => true, 'portal_last_active_at' => $active ? now() : null]);
     $invoice = enrichedInvoice($company);
-    $invoice->update(['invoice_details' => [...$invoice->invoice_details, 'tracking_synced_at' => now()->subMinutes($minutes)->utc()->toIso8601String(), 'tracking_header_updated_at' => '2026-09-01 12:00:00']]);
+    $invoice->update(['invoice_details' => [...$invoice->invoice_details, 'tracking_dirty' => $due, 'tracking_synced_at' => now()->subMinutes($minutes)->utc()->toIso8601String(), 'tracking_header_updated_at' => '2026-09-01 12:00:00']]);
 
     expect($invoice->hasCurrentInvoiceTracking())->toBe(! $due);
     expect(Transaction::query()->needsInvoiceTracking()->exists())->toBe($due);
     expect(app(InvoiceEnrichmentStatus::class)->report()['complete'])->toBe(! $due);
     Http::assertNothingSent();
-})->with([[false, 359, false], [false, 360, true], [true, 14, false], [true, 15, true]]);
+})->with([[false, 10080, false], [false, 1, true], [true, 10080, false], [true, 1, true]]);
 
 it('rejects invalid recovery targets without creating work', function () {
     Queue::fake();

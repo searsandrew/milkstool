@@ -59,8 +59,8 @@ class SyncStatus extends Command
                 $fields[] = $prefix.'_'.$field;
             }
         }
-        if ($type === 'sales-orders') {
-            $fields = [...$fields, 'sales_orders_checkpoint_at', 'sales_orders_full_synced_at'];
+        if (in_array($type, ['sales-orders', 'invoices'], true)) {
+            $fields = [...$fields, $prefix.'_checkpoint_at', $prefix.'_full_synced_at'];
         }
         $companies = Company::query()->select($fields)
             ->when($customerId !== null, fn (Builder $query) => $query->where('id', $customerId))
@@ -101,9 +101,9 @@ class SyncStatus extends Command
                 $countKey => (int) $company->{$countKey},
                 'last_attempt_at' => $this->timestamp($company->{$prefix.'_sync_started_at'}),
                 'last_success_at' => $this->timestamp($company->{$prefix.'_synced_at'}),
-                'source_checkpoint_at' => $prefix === 'sales_orders' ? $this->timestamp($company->sales_orders_checkpoint_at) : null,
+                'source_checkpoint_at' => in_array($prefix, ['sales_orders', 'invoices'], true) ? $this->timestamp($company->{$prefix.'_checkpoint_at'}) : null,
                 $completionKey => $this->timestamp($completedAt),
-                'last_full_sync_at' => $this->timestamp($prefix === 'sales_orders' ? $company->sales_orders_full_synced_at : $company->{$prefix.'_synced_at'}),
+                'last_full_sync_at' => $this->timestamp(in_array($prefix, ['sales_orders', 'invoices'], true) ? $company->{$prefix.'_full_synced_at'} : $company->{$prefix.'_synced_at'}),
                 'next_sync_at' => $this->timestamp($company->refreshDueAt($prefix)),
                 'error' => $company->{$prefix.'_sync_error'},
             ];
@@ -175,7 +175,7 @@ class SyncStatus extends Command
     {
         $rows = [];
 
-        foreach (['customers', 'sales-orders', 'invoices', 'credit-memos', 'balances', 'payments'] as $name) {
+        foreach (['customers', 'sales-orders', 'invoices', 'credit-memos', 'balances', 'payments', 'invoice-enrichment'] as $name) {
             $row = ['name' => $name, 'ready' => null, 'delayed' => null, 'reserved' => null, 'expired_reservations' => null, 'failed' => null];
 
             if (config('queue.connections.netsuite.driver') === 'database') {

@@ -42,6 +42,7 @@ class SyncInvoiceTracking
                         unset($details['enrichment_error']);
                     }
                     $invoice->invoice_details = [...$details,
+                        'tracking_dirty' => false,
                         'tracking_numbers' => $tracking[$invoice->id],
                         'tracking_scope' => 'related_sales_orders',
                         'tracking_synced_at' => now()->utc()->toIso8601String(),

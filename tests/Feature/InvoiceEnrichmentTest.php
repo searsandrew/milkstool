@@ -101,13 +101,13 @@ it('processes five invoices then schedules a continuation and skips completed in
     ]);
     RefreshInvoiceDetails::dispatch(16);
 
-    Queue::connection('netsuite')->pop('invoices')->fire();
+    Queue::connection('netsuite')->pop('invoice-enrichment')->fire();
 
     expect(Transaction::query()->needsInvoiceEnrichment()->pluck('id')->all())->toBe([1347]);
     $this->assertDatabaseCount('jobs', 1);
     expect(DB::table('jobs')->sole()->available_at)->toBe(now()->addSeconds(30)->timestamp);
     $this->travel(31)->seconds();
-    Queue::connection('netsuite')->pop('invoices')->fire();
+    Queue::connection('netsuite')->pop('invoice-enrichment')->fire();
     expect(Transaction::query()->needsInvoiceEnrichment()->exists())->toBeFalse();
     $this->assertDatabaseCount('jobs', 0);
     Http::assertSentCount(34);

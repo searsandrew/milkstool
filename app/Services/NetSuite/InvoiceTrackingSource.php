@@ -2,6 +2,8 @@
 
 namespace App\Services\NetSuite;
 
+use Carbon\CarbonImmutable;
+use Generator;
 use Illuminate\Support\Facades\Validator;
 use InvalidArgumentException;
 use RuntimeException;
@@ -9,6 +11,44 @@ use RuntimeException;
 class InvoiceTrackingSource
 {
     public function __construct(private SuiteQlClient $client) {}
+
+    /** @return Generator<int, int> */
+    public function changedInvoices(int $customerId, CarbonImmutable $modifiedSince, CarbonImmutable $modifiedUntil): Generator
+    {
+        if ($customerId < 1 || $modifiedSince->greaterThan($modifiedUntil)) {
+            throw new InvalidArgumentException('Provide a customer and an ordered source timestamp window.');
+        }
+        $since = $modifiedSince->utc()->format('Y-m-d H:i:s');
+        $until = $modifiedUntil->utc()->format('Y-m-d H:i:s');
+        $lastId = 0;
+        do {
+            $page = $this->client->query(<<<SQL
+                SELECT DISTINCT invoice.id AS invoice_id, invoice.entity AS customer_id
+                FROM transaction invoice
+                JOIN transactionline invoiceLine ON invoiceLine.transaction = invoice.id
+                JOIN transaction salesOrder ON salesOrder.id = invoiceLine.createdfrom
+                JOIN transactionline fulfillmentLine ON fulfillmentLine.createdfrom = salesOrder.id
+                JOIN transaction fulfillment ON fulfillment.id = fulfillmentLine.transaction
+                WHERE invoice.type = 'CustInvc' AND invoice.entity = {$customerId} AND invoice.id > {$lastId}
+                    AND salesOrder.type = 'SalesOrd' AND salesOrder.entity = {$customerId}
+                    AND fulfillment.type = 'ItemShip' AND fulfillment.entity = {$customerId}
+                    AND SYS_EXTRACT_UTC(fulfillment.lastmodifieddate) >= TO_TIMESTAMP('{$since}', 'YYYY-MM-DD HH24:MI:SS')
+                    AND SYS_EXTRACT_UTC(fulfillment.lastmodifieddate) <= TO_TIMESTAMP('{$until}', 'YYYY-MM-DD HH24:MI:SS')
+                ORDER BY invoice.id
+                SQL);
+            foreach ($page['items'] as $row) {
+                Validator::make($row, [
+                    'invoice_id' => ['required', 'integer', 'min:1'],
+                    'customer_id' => ['required', 'integer', 'in:'.$customerId],
+                ])->validate();
+                if ((int) $row['invoice_id'] <= $lastId) {
+                    throw new RuntimeException('NetSuite tracking change pagination did not advance.');
+                }
+                $lastId = (int) $row['invoice_id'];
+                yield $lastId;
+            }
+        } while ($page['hasMore']);
+    }
 
     /** @param list<int> $invoiceIds
      * @return array<int, list<string>>

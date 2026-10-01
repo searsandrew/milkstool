@@ -60,7 +60,7 @@ it('does not retry authentication errors or unsafe writes', function (string $me
 it('defers different customer queues during one shared outage then resumes successfully', function () {
     Company::factory()->create(['id' => 16, 'is_active' => true]);
     $outage = true;
-    $sequence = Http::sequence()->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([]));
+    $sequence = Http::sequence()->push(sourcePage([sourceCustomer()]))->push(sourcePage([['current_time' => '2026-09-16 12:00:00']]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([]));
     Http::fake(['https://netsuite.example/*' => function ($request) use (&$outage, $sequence) {
         if ($outage) {
             throw new ConnectException('DNS unavailable', new Request('POST', $request->url()));

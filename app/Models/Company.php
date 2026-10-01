@@ -34,6 +34,8 @@ class Company extends Model
             'sales_orders_sync_started_at' => 'immutable_datetime',
             'sales_orders_synced_at' => 'immutable_datetime',
             'invoices_sync_started_at' => 'immutable_datetime',
+            'invoices_checkpoint_at' => 'immutable_datetime',
+            'invoices_full_synced_at' => 'immutable_datetime',
             'invoices_synced_at' => 'immutable_datetime',
             'payments_synced_at' => 'immutable_datetime',
             'payments_sync_started_at' => 'immutable_datetime',

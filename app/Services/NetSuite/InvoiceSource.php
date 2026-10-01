@@ -2,6 +2,7 @@
 
 namespace App\Services\NetSuite;
 
+use Carbon\CarbonImmutable;
 use Generator;
 use Illuminate\Support\Facades\Validator;
 use InvalidArgumentException;
@@ -156,14 +157,30 @@ class InvoiceSource
     }
 
     /** @return Generator<int, array<string, mixed>> */
-    public function invoices(int $customerId): Generator
+    public function invoices(int $customerId, ?CarbonImmutable $modifiedSince = null, ?CarbonImmutable $modifiedUntil = null): Generator
     {
         $this->assertPositiveId($customerId);
         $lastId = 0;
+        $window = '';
+
+        if (($modifiedSince === null) !== ($modifiedUntil === null) || ($modifiedSince !== null && $modifiedSince->greaterThan($modifiedUntil))) {
+            throw new InvalidArgumentException('Provide an ordered pair of source timestamps for incremental sync.');
+        }
+
+        if ($modifiedSince !== null) {
+            $since = $modifiedSince->setTimezone('UTC')->format('Y-m-d H:i:s');
+            $until = $modifiedUntil->setTimezone('UTC')->format('Y-m-d H:i:s');
+            $window = " AND SYS_EXTRACT_UTC(lastmodifieddate) >= TO_TIMESTAMP('{$since}', 'YYYY-MM-DD HH24:MI:SS')"
+                ." AND SYS_EXTRACT_UTC(lastmodifieddate) <= TO_TIMESTAMP('{$until}', 'YYYY-MM-DD HH24:MI:SS')";
+        }
+
         do {
-            $page = $this->client->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'CustInvc' AND id > {$lastId} ORDER BY id");
+            $page = $this->client->query($this->headerSql()." WHERE entity = {$customerId} AND type = 'CustInvc' AND id > {$lastId}{$window} ORDER BY id");
             foreach ($page['items'] as $invoice) {
                 $this->validateInvoice($invoice, $customerId);
+                if ($modifiedSince !== null && ! CarbonImmutable::parse($invoice['updated_at'], 'UTC')->betweenIncluded($modifiedSince, $modifiedUntil)) {
+                    throw new RuntimeException('NetSuite returned an invoice outside the requested modification window.');
+                }
                 if ((int) $invoice['id'] <= $lastId) {
                     throw new RuntimeException('NetSuite invoice pagination did not advance.');
                 }

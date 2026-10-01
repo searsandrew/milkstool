@@ -12,13 +12,17 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Queue\Middleware\ThrottlesExceptions;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class RefreshInvoiceDetails implements ShouldBeUniqueUntilProcessing, ShouldQueue
 {
     use Queueable;
-    use WaitsForNetSuite;
+    use WaitsForNetSuite {
+        middleware as private netSuiteMiddleware;
+    }
 
     public int $tries = 3;
 
@@ -29,7 +33,14 @@ class RefreshInvoiceDetails implements ShouldBeUniqueUntilProcessing, ShouldQueu
     public function __construct(public int $customerId)
     {
         $this->onConnection('netsuite');
-        $this->onQueue('invoices');
+        $this->onQueue('invoice-enrichment');
+    }
+
+    /** @return list<WithoutOverlapping|ThrottlesExceptions> */
+    public function middleware(): array
+    {
+        return [(new WithoutOverlapping('invoice-work:'.$this->customerId))->shared()->releaseAfter(60)->expireAfter(1260),
+            ...$this->netSuiteMiddleware()];
     }
 
     public function uniqueId(): string

@@ -13,7 +13,7 @@ use Searsandrew\BriarRose\Exceptions\BriarRoseConfigurationException;
 
 class SyncInvoicesCommand extends Command
 {
-    protected $signature = 'milkstool:sync-invoices {customer : NetSuite customer internal ID} {--queue : Queue a background import}';
+    protected $signature = 'milkstool:sync-invoices {customer : NetSuite customer internal ID} {--queue : Queue a background incremental refresh} {--incremental : Fetch changed invoices with periodic full reconciliation}';
 
     protected $description = 'Import and reconcile all invoices for one customer (read-only in NetSuite)';
 
@@ -38,7 +38,7 @@ class SyncInvoicesCommand extends Command
         try {
             $result = $sync->handle($customer, function (int $invoices, int $lines): void {
                 $this->line("Processed {$invoices} invoices / {$lines} lines.");
-            });
+            }, incremental: (bool) $this->option('incremental'));
         } catch (RequestException $exception) {
             $this->error('NetSuite returned HTTP '.$exception->response->status().'. Invoice import did not complete.');
 

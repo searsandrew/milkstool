@@ -11,12 +11,16 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Queue\Middleware\ThrottlesExceptions;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Throwable;
 
 class RefreshInvoices implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
-    use WaitsForNetSuite;
+    use WaitsForNetSuite {
+        middleware as private netSuiteMiddleware;
+    }
 
     public int $tries = 3;
 
@@ -31,6 +35,13 @@ class RefreshInvoices implements ShouldBeUnique, ShouldQueue
         $this->requestedAt = now()->format('Y-m-d H:i:s');
         $this->onConnection('netsuite');
         $this->onQueue('invoices');
+    }
+
+    /** @return list<WithoutOverlapping|ThrottlesExceptions> */
+    public function middleware(): array
+    {
+        return [(new WithoutOverlapping('invoice-work:'.$this->customerId))->shared()->releaseAfter(60)->expireAfter(1260),
+            ...$this->netSuiteMiddleware()];
     }
 
     public function uniqueId(): string
@@ -51,7 +62,7 @@ class RefreshInvoices implements ShouldBeUnique, ShouldQueue
         }
 
         try {
-            $sync->handle($this->customerId);
+            $sync->handle($this->customerId, incremental: true);
         } catch (ConnectionException|ReceivableSyncInterrupted $exception) {
             throw $exception;
         } catch (RequestException $exception) {
