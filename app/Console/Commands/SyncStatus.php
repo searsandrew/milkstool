@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Company;
+use App\Services\ServiceHealth;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
@@ -175,7 +176,7 @@ class SyncStatus extends Command
     {
         $rows = [];
 
-        foreach (['customers', 'sales-orders', 'invoices', 'credit-memos', 'balances', 'payments', 'invoice-enrichment'] as $name) {
+        foreach (array_values(array_unique(['customers', 'sales-orders', 'invoices', 'credit-memos', 'balances', 'payments', 'invoice-enrichment', ...ServiceHealth::queues()])) as $name) {
             $row = ['name' => $name, 'ready' => null, 'delayed' => null, 'reserved' => null, 'expired_reservations' => null, 'failed' => null];
 
             if (config('queue.connections.netsuite.driver') === 'database') {

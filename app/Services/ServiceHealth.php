@@ -15,6 +15,12 @@ class ServiceHealth
 {
     public const array QUEUES = ['customers', 'balances', 'sales-orders', 'invoices', 'credit-memos', 'payments'];
 
+    /** @return list<string> */
+    public static function queues(): array
+    {
+        return array_values(array_unique([...self::QUEUES, config('netsuite-sync.invoice_history_queue', 'invoices')]));
+    }
+
     /** @return array<string, mixed> */
     public function report(bool $deployment = false): array
     {
@@ -43,7 +49,7 @@ class ServiceHealth
             $this->check('scheduled_sync_enabled', fn (): bool => (bool) config('netsuite-sync.scheduled')),
             $this->check('scheduler_heartbeat', fn (): bool => $this->recent('scheduler', 180)),
         ];
-        foreach (self::QUEUES as $queue) {
+        foreach (self::queues() as $queue) {
             $checks[] = $this->check('worker_'.$queue, fn (): bool => $this->recent('worker:'.$queue, 1500));
         }
         if ($deployment) {

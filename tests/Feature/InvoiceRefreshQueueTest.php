@@ -134,7 +134,7 @@ it('reserves the queue job longer than its execution timeout', function () {
     $job = Queue::connection('netsuite')->pop('invoices');
 
     expect($job->timeout())->toBeLessThan(config('queue.connections.netsuite.retry_after'));
-    expect($job->maxTries())->toBe(3);
+    expect($job->maxTries())->toBe(0);
     expect($job->backoff())->toBe('60,300');
 });
 

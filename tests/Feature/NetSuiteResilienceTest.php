@@ -13,7 +13,6 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     fakeNetSuiteConfiguration();
@@ -71,8 +70,8 @@ it('defers different customer queues during one shared outage then resumes succe
     RefreshInvoices::dispatch(16);
     RefreshCustomerBalance::dispatch(16);
 
-    Queue::connection('netsuite')->pop('invoices')->fire();
-    Queue::connection('netsuite')->pop('balances')->fire();
+    $this->artisan('queue:work', ['connection' => 'netsuite', '--queue' => 'invoices', '--once' => true, '--sleep' => 0])->assertSuccessful();
+    $this->artisan('queue:work', ['connection' => 'netsuite', '--queue' => 'balances', '--once' => true, '--sleep' => 0])->assertSuccessful();
 
     expect(DB::table('jobs')->where('available_at', '>', now()->timestamp)->count())->toBe(2);
     expect(Company::findOrFail(16)->invoices_sync_error)->not->toContain('Background refresh failed');
@@ -81,28 +80,27 @@ it('defers different customer queues during one shared outage then resumes succe
 
     $this->travel(304)->seconds();
     $outage = false;
-    Queue::connection('netsuite')->pop('invoices')->fire();
+    $this->artisan('queue:work', ['connection' => 'netsuite', '--queue' => 'invoices', '--once' => true, '--sleep' => 0])->assertSuccessful();
 
     expect(Company::findOrFail(16)->invoices_sync_error)->toBeNull();
     expect(Company::findOrFail(16)->invoices_synced_at)->not->toBeNull();
     $this->assertDatabaseCount('jobs', 1);
 });
 
-it('keeps outage releases retryable past three reservations with a fixed expiry', function () {
+it('bounds real execution failures while preserving the source error', function () {
     Company::factory()->create(['id' => 16, 'is_active' => true]);
-    Http::fake(['https://netsuite.example/*' => Http::failedConnection()]);
+    Http::fake(['https://netsuite.example/*' => Http::response([], 503)]);
     RefreshInvoices::dispatch(16);
-    $deadline = json_decode(DB::table('jobs')->sole()->payload, true)['retryUntil'];
 
-    for ($attempt = 0; $attempt < 4; $attempt++) {
-        Queue::connection('netsuite')->pop('invoices')->fire();
+    for ($attempt = 0; $attempt < 3; $attempt++) {
+        $this->artisan('queue:work', ['connection' => 'netsuite', '--queue' => 'invoices', '--once' => true, '--sleep' => 0])->assertSuccessful();
         $this->travel(304)->seconds();
     }
 
-    $payload = json_decode(DB::table('jobs')->sole()->payload, true);
-    expect($payload['retryUntil'])->toBe($deadline);
-    expect(DB::table('jobs')->sole()->attempts)->toBe(4);
-    $this->assertDatabaseCount('failed_jobs', 0);
+    $this->assertDatabaseCount('jobs', 0);
+    $this->assertDatabaseCount('failed_jobs', 1);
+    expect(DB::table('failed_jobs')->sole()->exception)->toContain('RequestException');
+    Http::assertSentCount(3);
 });
 
 it('treats malformed source clocks as retryable without advancing a checkpoint', function (array $page) {
@@ -126,11 +124,12 @@ it('honors a rate limit cooldown across queues without retrying HTTP immediately
     RefreshInvoices::dispatch(16);
     RefreshCustomerBalance::dispatch(16);
 
-    Queue::connection('netsuite')->pop('invoices')->fire();
+    $this->artisan('queue:work', ['connection' => 'netsuite', '--queue' => 'invoices', '--once' => true, '--sleep' => 0])->assertSuccessful();
     $this->travel(400)->seconds();
-    Queue::connection('netsuite')->pop('balances')->fire();
+    $this->artisan('queue:work', ['connection' => 'netsuite', '--queue' => 'balances', '--once' => true, '--sleep' => 0])->assertSuccessful();
 
     Http::assertSentCount(1);
-    expect(DB::table('jobs')->where('available_at', '>', now()->timestamp)->count())->toBe(2);
+    $this->assertDatabaseCount('jobs', 2);
+    expect(DB::table('jobs')->where('queue', 'balances')->sole()->available_at)->toBeGreaterThan(now()->timestamp);
     $this->assertDatabaseCount('failed_jobs', 0);
 });

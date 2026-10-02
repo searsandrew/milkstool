@@ -18,8 +18,6 @@ class RefreshPayments implements ShouldBeUnique, ShouldQueue
     use Queueable;
     use WaitsForNetSuite;
 
-    public int $tries = 3;
-
     public int $timeout = 1200;
 
     public bool $failOnTimeout = true;

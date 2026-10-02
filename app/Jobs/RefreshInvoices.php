@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
-use Illuminate\Queue\Middleware\ThrottlesExceptions;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
@@ -23,8 +22,6 @@ class RefreshInvoices implements ShouldBeUniqueUntilProcessing, ShouldQueue
         middleware as private netSuiteMiddleware;
     }
 
-    public int $tries = 3;
-
     public int $timeout = 1200;
 
     public bool $failOnTimeout = true;
@@ -35,10 +32,11 @@ class RefreshInvoices implements ShouldBeUniqueUntilProcessing, ShouldQueue
     {
         $this->requestedAt = now()->format('Y-m-d H:i:s');
         $this->onConnection('netsuite');
-        $this->onQueue('invoices');
+        $this->onQueue(Company::query()->whereKey($customerId)->whereNotNull('invoices_backfilled_at')->exists()
+            ? 'invoices' : config('netsuite-sync.invoice_history_queue', 'invoices'));
     }
 
-    /** @return list<WithoutOverlapping|ThrottlesExceptions> */
+    /** @return list<WithoutOverlapping|NetSuiteCooldown> */
     public function middleware(): array
     {
         return [(new WithoutOverlapping('invoice-work:'.$this->customerId))->shared()->releaseAfter(60)->expireAfter(1260),
@@ -67,7 +65,7 @@ class RefreshInvoices implements ShouldBeUniqueUntilProcessing, ShouldQueue
             if (! $result['complete']) {
                 self::dispatch($this->customerId);
             }
-            Cache::put('milkstool:heartbeat:worker:invoices', now()->timestamp, 3600);
+            Cache::put('milkstool:heartbeat:worker:'.$this->queue, now()->timestamp, 3600);
         } catch (ConnectionException|ReceivableSyncInterrupted $exception) {
             throw $exception;
         } catch (RequestException $exception) {

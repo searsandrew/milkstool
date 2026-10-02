@@ -20,7 +20,7 @@ class RecordSyncHeartbeat extends Command
 
             return self::FAILURE;
         }
-        foreach (ServiceHealth::QUEUES as $queue) {
+        foreach (ServiceHealth::queues() as $queue) {
             RecordWorkerHeartbeat::dispatch($queue);
         }
         Cache::put('milkstool:heartbeat:scheduler', now()->timestamp, 3600);

@@ -16,8 +16,6 @@ class RefreshCustomers implements ShouldBeUnique, ShouldQueue
     use Queueable;
     use WaitsForNetSuite;
 
-    public int $tries = 3;
-
     public int $timeout = 300;
 
     public bool $failOnTimeout = true;
