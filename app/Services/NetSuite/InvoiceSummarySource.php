@@ -21,20 +21,20 @@ class InvoiceSummarySource
     {
         $summary = $this->fetch($customerId, (int) $invoice['id']);
         if ($summary !== $this->fetch($customerId, (int) $invoice['id'])) {
-            throw new ReceivableSyncInterrupted('Invoice summary changed during retrieval. Retry.');
+            throw new ReceivableSyncInterrupted("Invoice {$invoice['id']} summary changed during retrieval. Retry.");
         }
         $modified = CarbonImmutable::parse($invoice['updated_at'], 'UTC');
         if (! CarbonImmutable::parse($summary['source_modified_at'])->utc()->startOfMinute()->equalTo($modified->startOfMinute())
             || ! BigDecimal::of($summary['total'])->isEqualTo((string) $invoice['foreign_total'])
             || $summary['currency_id'] !== (int) $invoice['currency_id']) {
-            throw new ReceivableSyncInterrupted('Invoice summary and header do not describe the same source version.');
+            throw new ReceivableSyncInterrupted("Invoice {$invoice['id']} summary and header do not describe the same source version.");
         }
         $sourceLines = collect($lines)->keyBy('line_id');
         $quantities = collect($summary['line_quantities'])->keyBy('line_id');
         foreach ($quantities as $lineId => $quantity) {
             $line = $sourceLines->get($lineId);
             if ($line === null || $quantity['item_id'] !== (isset($line['item_id']) ? (int) $line['item_id'] : null)) {
-                throw new ReceivableSyncInterrupted('Invoice item quantities do not match the source lines.');
+                throw new ReceivableSyncInterrupted("Invoice {$invoice['id']} item quantities do not match source line {$lineId}.");
             }
         }
         foreach ($lines as $line) {
@@ -42,8 +42,9 @@ class InvoiceSummarySource
             $coveredByKit = ($line['kit_component'] ?? null) === 'T' && ($parent['item_type'] ?? null) === 'Kit'
                 && $quantities->has($parent['line_id']);
             if ($line['mainline'] !== 'T' && $line['taxline'] !== 'T' && $line['discount_line'] !== 'T'
+                && ($line['is_cogs'] ?? null) !== 'T'
                 && ($line['item_type'] ?? null) !== 'ShipItem' && isset($line['item_id']) && ! $coveredByKit && ! $quantities->has($line['line_id'])) {
-                throw new ReceivableSyncInterrupted('Invoice item quantities are incomplete for the source lines.');
+                throw new ReceivableSyncInterrupted("Invoice {$invoice['id']} item quantities are missing source line {$line['line_id']} (item {$line['item_id']}).");
             }
         }
 

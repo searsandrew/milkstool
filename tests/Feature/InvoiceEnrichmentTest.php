@@ -142,3 +142,66 @@ it('accepts an omitted kit component only when its source parent is represented 
         $this->assertDatabaseCount('transaction_lines', 2);
     }
 })->with([true, false]);
+
+it('identifies the invoice and missing item line without saving an incomplete snapshot', function () {
+    Company::factory()->create(['id' => 16]);
+    $record = sourceInvoiceRecord();
+    $record['item'] = ['items' => [], 'totalResults' => 0];
+    Http::fake([
+        'https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+            ->push(sourcePage([sourceInvoice()]))->push(sourcePage([sourceInvoiceLine()])),
+        'https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response($record),
+    ]);
+
+    expect(fn () => app(SyncInvoice::class)->handle(16, 1347))->toThrow(
+        ReceivableSyncInterrupted::class, 'Invoice 1347 item quantities are missing source line 1 (item 55).',
+    );
+
+    $this->assertDatabaseCount('transactions', 0);
+    $this->assertDatabaseCount('transaction_lines', 0);
+});
+
+it('retains NetSuite cost accounting rows without requiring customer item quantities for them', function () {
+    Company::factory()->create(['id' => 16]);
+    $lines = [
+        sourceInvoiceLine(['line_id' => '69', 'is_cogs' => 'F', 'quantity' => '-32']),
+        sourceInvoiceLine(['line_id' => '70', 'is_cogs' => 'T', 'quantity' => '32', 'amount' => null, 'memo' => 'Cost of Sales']),
+        sourceInvoiceLine(['line_id' => '71', 'is_cogs' => 'T', 'quantity' => '-32', 'amount' => null, 'memo' => 'Cost of Sales']),
+    ];
+    Http::fake([
+        'https://netsuite.example/services/rest/query/v1/suiteql*' => fakeCompleteInvoiceReads(Http::sequence()
+            ->push(sourcePage([sourceInvoice()]))->push(sourcePage($lines))->push(sourcePage([sourceInvoice()]))),
+        'https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response(sourceInvoiceRecord([$lines[0]])),
+    ]);
+
+    $invoice = app(SyncInvoice::class)->handle(16, 1347);
+
+    expect($invoice->hasCurrentInvoiceEnrichment())->toBeTrue();
+    expect($invoice->invoice_details['summary']['line_quantities'])->toHaveCount(1);
+    $this->assertDatabaseCount('transaction_lines', 3);
+    $this->assertDatabaseHas('transaction_lines', ['transaction_id' => 1347, 'netsuite_line_id' => 70, 'quantity' => '32.00000000']);
+    $this->assertDatabaseHas('transaction_lines', ['transaction_id' => 1347, 'netsuite_line_id' => 71, 'quantity' => '-32.00000000']);
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+    $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
+        ->assertJsonPath('data.lines.0.is_cogs', false)
+        ->assertJsonPath('data.lines.1.is_cogs', true)
+        ->assertJsonPath('data.lines.2.is_cogs', true);
+});
+
+it('does not excuse a missing customer item based on its cost of sales memo', function (?string $flag) {
+    Company::factory()->create(['id' => 16]);
+    Http::fake([
+        'https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+            ->push(sourcePage([sourceInvoice()]))->push(sourcePage([
+                sourceInvoiceLine(), sourceInvoiceLine(['line_id' => '70', 'memo' => 'Cost of Sales', 'is_cogs' => $flag]),
+            ])),
+        'https://netsuite.example/services/rest/record/v1/invoice/1347*' => Http::response(sourceInvoiceRecord()),
+    ]);
+
+    expect(fn () => app(SyncInvoice::class)->handle(16, 1347))->toThrow(
+        ReceivableSyncInterrupted::class, 'Invoice 1347 item quantities are missing source line 70 (item 55).',
+    );
+
+    $this->assertDatabaseCount('transactions', 0);
+    $this->assertDatabaseCount('transaction_lines', 0);
+})->with(['F', null]);

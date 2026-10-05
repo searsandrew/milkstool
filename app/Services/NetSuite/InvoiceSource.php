@@ -50,7 +50,7 @@ class InvoiceSource
                     transactionline.createdfrom AS source_transaction_id, transactionline.itemtype AS item_type,
                     transactionline.quantity, transactionline.rate, transactionline.netamount AS amount,
                     transactionline.price AS price_level_id, BUILTIN.DF(transactionline.price) AS price_level_name,
-                    transactionline.memo, transactionline.mainline, transactionline.taxline,
+                    transactionline.memo, transactionline.mainline, transactionline.taxline, transactionline.iscogs AS is_cogs,
                     transactionline.kitcomponent AS kit_component, transactionline.kitmemberof AS kit_parent_line_id,
                     transactionline.transactiondiscount AS discount_line,
                     transactionline.transactionlinetype AS line_type
@@ -73,6 +73,7 @@ class InvoiceSource
                     'item_number' => ['nullable', 'string', 'max:255'],
                     'item_type' => ['nullable', 'string', 'max:255'],
                     'kit_component' => ['nullable', 'in:T,F'],
+                    'is_cogs' => ['nullable', 'in:T,F'],
                     'kit_parent_line_id' => ['nullable', 'integer', 'min:0'],
                     'memo' => ['nullable', 'string'],
                     'quantity' => ['nullable', 'numeric'],

@@ -25,6 +25,7 @@ class TransactionLineResource extends JsonResource
             'is_mainline' => $this->is_mainline,
             'is_tax_line' => $this->is_tax_line,
             'is_discount_line' => $this->is_discount_line,
+            'is_cogs' => ($this->raw_payload['is_cogs'] ?? null) === 'T',
         ];
     }
 }
