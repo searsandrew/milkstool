@@ -53,8 +53,8 @@ it('lists due customers without enqueueing in dry run mode', function () {
 });
 
 it('runs a serialized queued refresh and makes the customer no longer due', function () {
-    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => fakeEmptyCreditApplications(Http::sequence()
-        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([])))]);
+    Http::fake(['https://netsuite.example/*' => fakeCompleteCreditReads(fakeEmptyCreditApplications(Http::sequence()
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push(sourcePage([]))->push(sourcePage([]))))]);
     RefreshCreditMemos::dispatch(16);
 
     $queued = Queue::connection('netsuite')->pop('credit-memos');

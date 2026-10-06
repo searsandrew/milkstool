@@ -29,9 +29,9 @@ class StoreCreditMemo
 
             $attributes = array_intersect_key($creditMemo, array_flip([
                 'type', 'number', 'purchase_order_number', 'transaction_date', 'status', 'status_name',
-                'currency_id', 'total', 'foreign_total', 'memo', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid',
+                'currency_id', 'total', 'foreign_total', 'memo', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid', 'credit_applied', 'credit_remaining',
             ]));
-            foreach (['purchase_order_number', 'status_name', 'memo', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid'] as $nullable) {
+            foreach (['purchase_order_number', 'status_name', 'memo', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid', 'credit_applied', 'credit_remaining'] as $nullable) {
                 $attributes[$nullable] = $creditMemo[$nullable] ?? null;
             }
             $transaction->fill([...$attributes, 'company_id' => $company->id,

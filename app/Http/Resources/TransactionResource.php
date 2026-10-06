@@ -23,6 +23,8 @@ class TransactionResource extends JsonResource
             'foreign_total' => $this->foreign_total,
             'foreign_amount_paid' => $this->foreign_amount_paid,
             'foreign_amount_unpaid' => $this->foreign_amount_unpaid,
+            'credit_applied' => $this->when($this->type === 'CustCred', $this->credit_applied),
+            'credit_remaining' => $this->when($this->type === 'CustCred', $this->credit_remaining),
             'synced_at' => $this->synced_at?->utc()->toIso8601String(),
             'credit_memo_applications' => $this->when($this->type === 'CustCred', fn () => CreditMemoApplicationResource::collection($this->whenLoaded('creditMemoApplications'))),
             'credit_memo_applications_scope' => $this->when($this->type === 'CustCred', 'same_customer'),

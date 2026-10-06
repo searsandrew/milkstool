@@ -19,8 +19,12 @@ it('uses nonsequential source IDs as primary keys and relationship foreign keys'
         ->and(Schema::hasColumn('companies', 'netsuite_id'))->toBeFalse()
         ->and(Schema::hasColumn('transactions', 'netsuite_id'))->toBeFalse();
 
-    foreach (['companies', 'transactions'] as $table) {
-        $primary = collect(Schema::getColumns($table))->firstWhere('name', 'id');
-        expect($primary['auto_increment'])->toBeFalse();
+    foreach ([$company, $transaction] as $model) {
+        expect($model->getIncrementing())->toBeFalse();
+
+        if ($model->getConnection()->getDriverName() !== 'sqlite') {
+            $primary = collect(Schema::getColumns($model->getTable()))->firstWhere('name', 'id');
+            expect($primary['auto_increment'])->toBeFalse();
+        }
     }
 });

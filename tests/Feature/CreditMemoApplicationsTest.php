@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\CreditMemoApplication;
 use App\Models\Transaction;
 use Illuminate\Http\Client\Factory;
+use Illuminate\Http\Client\ResponseSequence;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 
@@ -28,23 +29,24 @@ function creditApplications(): array
 /** @param list<array<string, mixed>> $applications
  * @param  list<array<string, mixed>>|null  $verification
  */
-function fakeCreditApplicationSync(array $applications, ?array $verification = null, string $controlAmount = '100'): void
+function fakeCreditApplicationSync(array $applications, ?array $verification = null, string $controlAmount = '100', array $summary = [], ?ResponseSequence $summaryResponses = null): void
 {
     Http::swap(new Factory);
     Http::preventStrayRequests();
     $credit = sourceInvoice(['id' => '8124', 'type' => 'CustCred', 'total' => '-100', 'foreign_total' => '-100',
-        'foreign_amount_paid' => null, 'foreign_amount_unpaid' => null]);
+        'foreign_amount_paid' => null, 'foreign_amount_unpaid' => null, ...$summary]);
     $line = sourceInvoiceLine(['transaction_id' => '8124', 'quantity' => '1', 'amount' => '100']);
     $totals = $applications === [] ? [] : [['currency_id' => '1', 'application_count' => (string) count($applications),
         'application_amount_count' => (string) count(array_filter($applications, fn ($row) => isset($row['foreign_amount']))),
         'application_amount' => $controlAmount]];
-    Http::fake(['https://netsuite.example/*' => Http::sequence()
-        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([$credit]))->push(sourcePage([$line]))
-        ->push(sourcePage($applications))->push(sourcePage($verification ?? $applications))->push(sourcePage([$credit]))
-        ->push(sourcePage([['currency_id' => '1', 'credit_memo_count' => '1', 'paid_count' => '0', 'unpaid_count' => '0',
-            'foreign_amount_paid' => '0', 'foreign_amount_unpaid' => '0', 'total' => '-100', 'foreign_total' => '-100']]))
-        ->push(sourcePage([['currency_id' => '1', 'line_count' => '1', 'quantity_count' => '1', 'amount_count' => '1',
-            'quantity' => '1', 'amount' => '100', 'detail_amount' => '100']]))->push(sourcePage($totals))]);
+    Http::fake(['https://netsuite.example/services/rest/record/v1/creditMemo/8124' => $summaryResponses ?? fn () => null,
+        'https://netsuite.example/*' => fakeCompleteCreditReads(Http::sequence()
+            ->push(sourcePage([sourceCustomer()]))->push(sourcePage([$credit]))->push(sourcePage([$line]))
+            ->push(sourcePage($applications))->push(sourcePage($verification ?? $applications))->push(sourcePage([$credit]))
+            ->push(sourcePage([['currency_id' => '1', 'credit_memo_count' => '1', 'paid_count' => '0', 'unpaid_count' => '0',
+                'foreign_amount_paid' => '0', 'foreign_amount_unpaid' => '0', 'total' => '-100', 'foreign_total' => '-100']]))
+            ->push(sourcePage([['currency_id' => '1', 'line_count' => '1', 'quantity_count' => '1', 'amount_count' => '1',
+                'quantity' => '1', 'amount' => '100', 'detail_amount' => '100']]))->push(sourcePage($totals)))]);
 }
 
 it('imports credits applied across invoices and reconciles all sixteen metrics', function () {
@@ -57,7 +59,7 @@ it('imports credits applied across invoices and reconciles all sixteen metrics',
     expect(CreditMemoApplication::query()->orderBy('target_netsuite_id')->first())->toMatchArray(['credit_line_id' => 0, 'foreign_amount' => '60.00000000']);
     expect(Transaction::query()->sole()->foreign_total)->toBe('-100.00000000');
     expect($this->company->refresh()->credit_memos_backfilled_at)->not->toBeNull();
-    Http::assertSent(fn ($request) => str_contains($request['q'], "payment.type = 'CustCred'") && str_contains($request['q'], "l.linktype = 'Payment'"));
+    Http::assertSent(fn ($request) => str_contains($request['q'] ?? '', "payment.type = 'CustCred'") && str_contains($request['q'] ?? '', "l.linktype = 'Payment'"));
 });
 
 it('refreshes and removes applications even when the credit header is unchanged', function () {
@@ -110,4 +112,40 @@ it('exposes credit applications only to the same customer and keeps them distinc
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:17']);
     $this->getJson('/api/v1/customers/16/transactions/8124')->assertForbidden();
     Http::assertNothingSent();
+});
+
+it('refreshes source credit totals with unchanged headers and exposes them through the API', function () {
+    fakeCreditApplicationSync([], summary: ['credit_applied' => '75', 'credit_remaining' => '25']);
+    app(SyncCreditMemos::class)->handle(16);
+    fakeCreditApplicationSync([], summary: ['credit_applied' => '100', 'credit_remaining' => '0']);
+    app(SyncCreditMemos::class)->handle(16);
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+
+    $this->getJson('/api/v1/customers/16/transactions/8124')->assertOk()
+        ->assertJsonPath('data.credit_applied', '100.00000000')
+        ->assertJsonPath('data.credit_remaining', '0.00000000');
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/creditMemo/8124'));
+});
+
+it('preserves stored totals and freshness when source totals change during retrieval', function () {
+    $credit = Transaction::factory()->for($this->company)->create(['id' => 8124, 'type' => 'CustCred', 'credit_applied' => '20', 'credit_remaining' => '80']);
+    fakeCreditApplicationSync([], summaryResponses: Http::sequence()
+        ->push(creditSummaryRecord(['id' => '8124', 'total' => '100', 'applied' => '75', 'unapplied' => '25']))
+        ->push(creditSummaryRecord(['id' => '8124', 'total' => '100', 'applied' => '100', 'unapplied' => '0'])));
+
+    $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
+
+    expect($credit->refresh()->credit_applied)->toBe('20.00000000');
+    expect($this->company->refresh()->credit_memos_synced_at)->toBeNull();
+});
+
+it('keeps stored totals when the credit record cannot be read', function () {
+    $credit = Transaction::factory()->for($this->company)->create(['id' => 8124, 'type' => 'CustCred', 'credit_applied' => '20', 'credit_remaining' => '80']);
+    fakeCreditApplicationSync([], summaryResponses: Http::sequence()->push([], 403));
+
+    $this->artisan('milkstool:sync-credit-memos', ['customer' => '16'])->assertFailed();
+
+    expect($credit->refresh()->credit_applied)->toBe('20.00000000');
+    expect($credit->credit_remaining)->toBe('80.00000000');
+    expect($this->company->refresh()->credit_memos_synced_at)->toBeNull();
 });

@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Services\NetSuite\CreditMemoApplicationSource;
 use App\Services\NetSuite\CreditMemoReconciliation;
 use App\Services\NetSuite\CreditMemoSource;
+use App\Services\NetSuite\CreditMemoSummarySource;
 use App\Services\NetSuite\CustomerSource;
 use Closure;
 use Illuminate\Support\Facades\Cache;
@@ -16,7 +17,7 @@ use Throwable;
 
 class SyncCreditMemos
 {
-    public function __construct(private CreditMemoSource $source, private CreditMemoApplicationSource $applications, private CustomerSource $customers, private StoreCreditMemo $store, private CreditMemoReconciliation $reconciliation) {}
+    public function __construct(private CreditMemoSource $source, private CreditMemoSummarySource $summaries, private CreditMemoApplicationSource $applications, private CustomerSource $customers, private StoreCreditMemo $store, private CreditMemoReconciliation $reconciliation) {}
 
     /**
      * @param  (Closure(int, int): void)|null  $onProgress
@@ -41,6 +42,10 @@ class SyncCreditMemos
             foreach (LazyCollection::make(fn () => $this->source->creditMemos($customerId))->chunk(50) as $batch) {
                 $ids = $batch->map(fn (array $creditMemo): int => (int) $creditMemo['id'])->values()->all();
                 $lines = $this->source->linesForCreditMemos($customerId, $ids);
+                $summaries = [];
+                foreach ($batch as $creditMemo) {
+                    $summaries[(int) $creditMemo['id']] = $this->summaries->forCreditMemo($customerId, $creditMemo);
+                }
                 $applications = $this->applications->forCreditMemos($customerId, $ids);
                 $latestApplications = $this->applications->forCreditMemos($customerId, $ids);
                 if ($applications != $latestApplications) {
@@ -48,7 +53,8 @@ class SyncCreditMemos
                 }
                 $latest = $this->source->creditMemosByIds($customerId, $ids);
                 foreach ($batch as $creditMemo) {
-                    if ($creditMemo != $latest[(int) $creditMemo['id']]) {
+                    if ($creditMemo != $latest[(int) $creditMemo['id']]
+                        || $summaries[(int) $creditMemo['id']] !== $this->summaries->forCreditMemo($customerId, $creditMemo)) {
                         throw new ReceivableSyncInterrupted('A credit memo changed during import. Retry the sync.');
                     }
                 }
@@ -57,7 +63,7 @@ class SyncCreditMemos
                         throw new ReceivableSyncInterrupted('The credit memo sync lock expired. Retry the sync.');
                     }
                     $creditMemoLines = $lines[(int) $creditMemo['id']];
-                    $this->store->handle($company, $creditMemo, $creditMemoLines, $applications[(int) $creditMemo['id']]);
+                    $this->store->handle($company, [...$creditMemo, ...$summaries[(int) $creditMemo['id']]], $creditMemoLines, $applications[(int) $creditMemo['id']]);
                     $creditMemos++;
                     $lineCount += count($creditMemoLines);
                 }

@@ -1,5 +1,6 @@
 <?php
 
+use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\Client\ResponseSequence;
@@ -113,4 +114,45 @@ function invoiceLineTotals(array $overrides = []): array
 {
     return array_replace(['currency_id' => '1', 'line_count' => '1', 'quantity_count' => '1', 'amount_count' => '1',
         'quantity' => '-2.5', 'amount' => '-25.12345678', 'detail_amount' => '-25.12345678'], $overrides);
+}
+
+/** Supply credit record responses from the headers in a test's source sequence. */
+function fakeCompleteCreditReads(callable $sequence): Closure
+{
+    $headers = [];
+
+    return function (Request $request) use ($sequence, &$headers): mixed {
+        if (preg_match('~/record/v1/creditMemo/(\d+)~', $request->url(), $match)) {
+            $header = $headers[(int) $match[1]] ?? throw new RuntimeException('Missing credit header fixture.');
+
+            return Http::response([
+                'id' => $header['id'], 'entity' => ['id' => $header['customer_id']],
+                'currency' => ['id' => $header['currency_id']],
+                'lastModifiedDate' => CarbonImmutable::parse($header['updated_at'], 'UTC')->toIso8601String(),
+                'total' => (string) BigDecimal::of($header['foreign_total'])->negated(),
+                'applied' => $header['credit_applied'] ?? '0',
+                'unapplied' => $header['credit_remaining'] ?? (string) BigDecimal::of($header['foreign_total'])->negated(),
+            ]);
+        }
+
+        return $sequence($request)->then(function ($response) use (&$headers) {
+            $payload = json_decode((string) $response->getBody(), true);
+            foreach ($payload['items'] ?? [] as $row) {
+                if (($row['type'] ?? null) === 'CustCred' && isset($row['id'], $row['updated_at'])) {
+                    $headers[(int) $row['id']] = $row;
+                }
+            }
+
+            return $response;
+        });
+    };
+}
+
+/** @param array<string, mixed> $overrides
+ * @return array<string, mixed>
+ */
+function creditSummaryRecord(array $overrides = []): array
+{
+    return array_replace(['id' => '1347', 'entity' => ['id' => '16'], 'currency' => ['id' => '1'],
+        'lastModifiedDate' => sourceInvoice()['updated_at'], 'total' => '100', 'applied' => '75', 'unapplied' => '25'], $overrides);
 }
