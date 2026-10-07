@@ -15,6 +15,7 @@ class TransactionResource extends JsonResource
             'type' => $this->type,
             'number' => $this->number,
             'purchase_order_number' => $this->purchase_order_number,
+            'memo' => $this->when($this->type === 'CustPymt', $this->memo),
             'transaction_date' => $this->transaction_date?->format('Y-m-d'),
             'due_date' => $this->due_date?->format('Y-m-d'),
             'status' => $this->status,

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerSyncResource;
 use App\Http\Resources\TransactionResource;
 use App\Models\Company;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Validation\ValidationException;
@@ -47,7 +48,16 @@ class CustomerTransactionController extends Controller
             $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
             $query->where(function ($query) use ($pattern) {
                 $query->whereRaw("number LIKE ? ESCAPE '!'", [$pattern])
-                    ->orWhereRaw("purchase_order_number LIKE ? ESCAPE '!'", [$pattern]);
+                    ->orWhereRaw("purchase_order_number LIKE ? ESCAPE '!'", [$pattern])
+                    ->orWhere(function (Builder $query) use ($pattern): void {
+                        $query->where('type', 'CustInvc')
+                            ->whereHas('lines', function (Builder $lines) use ($pattern): void {
+                                $lines->where('is_mainline', false)
+                                    ->where('is_tax_line', false)
+                                    ->where('is_discount_line', false)
+                                    ->whereRaw("LOWER(item_number) LIKE LOWER(?) ESCAPE '!'", [$pattern]);
+                            });
+                    });
             });
         }
         $sortColumns = ['number' => 'number', 'date' => 'transaction_date', 'status' => 'status_name', 'amount' => 'foreign_total'];

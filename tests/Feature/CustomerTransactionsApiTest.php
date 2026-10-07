@@ -176,3 +176,67 @@ it('rejects unsupported sort and search input', function (string $field, mixed $
     ['sort_by', 'raw_payload'], ['sort_by', 'number desc; drop table transactions'],
     ['sort_direction', 'sideways'], ['search', str_repeat('a', 201)], ['search', ['unexpected']],
 ]);
+
+it('finds invoices by partial part number across all ages without duplicates or other customers', function () {
+    $this->travelTo(now()->setDate(2026, 10, 7));
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+    $old = Transaction::factory()->for($this->company)->create(['type' => 'CustInvc', 'transaction_date' => '2021-06-08']);
+    $recent = Transaction::factory()->for($this->company)->create(['type' => 'CustInvc', 'transaction_date' => '2026-10-01']);
+    TransactionLine::factory()->for($old)->count(2)->create(['item_number' => 'DC97-14486ACM']);
+    TransactionLine::factory()->for($recent)->create(['item_number' => 'DC97-14486ACM']);
+    TransactionLine::factory()->for(Transaction::factory()->create(['type' => 'CustInvc']))->create(['item_number' => 'DC97-14486ACM']);
+    Transaction::factory()->for($this->company)->create(['type' => 'CustInvc']);
+
+    foreach ([$recent->id, $old->id] as $index => $id) {
+        $this->getJson('/api/v1/customers/16/transactions?'.http_build_query([
+            'type' => 'CustInvc', 'search' => ' 14486acm ', 'per_page' => 1, 'page' => $index + 1,
+        ]))->assertOk()->assertJsonPath('meta.total', 2)->assertJsonPath('data.0.netsuite_id', $id)
+            ->assertJsonMissingPath('data.0.lines');
+    }
+    Http::assertNothingSent();
+});
+
+it('keeps date and outstanding filters when searching invoice parts', function () {
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+    foreach ([['2026-10-01', '10'], ['2026-10-01', '0'], ['2021-06-08', '10']] as [$date, $unpaid]) {
+        $invoice = Transaction::factory()->for($this->company)->create([
+            'type' => 'CustInvc', 'transaction_date' => $date, 'foreign_amount_unpaid' => $unpaid,
+        ]);
+        TransactionLine::factory()->for($invoice)->create(['item_number' => 'DC97-14486ACM']);
+    }
+
+    $this->getJson('/api/v1/customers/16/transactions?'.http_build_query([
+        'type' => 'CustInvc', 'search' => '14486', 'from' => '2026-10-01', 'to' => '2026-10-07', 'outstanding' => 1,
+    ]))->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.foreign_amount_unpaid', '10.00000000');
+});
+
+it('treats wildcard characters in part numbers literally', function () {
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+    $invoice = Transaction::factory()->for($this->company)->create(['type' => 'CustInvc']);
+    TransactionLine::factory()->for($invoice)->create(['item_number' => 'PART-50%_!']);
+    TransactionLine::factory()->for(Transaction::factory()->for($this->company)->create(['type' => 'CustInvc']))
+        ->create(['item_number' => 'PART-50000']);
+
+    $this->getJson('/api/v1/customers/16/transactions?'.http_build_query(['type' => 'CustInvc', 'search' => '50%_!']))
+        ->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.netsuite_id', $invoice->id);
+});
+
+it('does not match invoice parts from accounting-only lines', function (string $flag) {
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+    $invoice = Transaction::factory()->for($this->company)->create(['type' => 'CustInvc']);
+    TransactionLine::factory()->for($invoice)->create(['item_number' => 'SPECIAL-PART', $flag => true]);
+
+    $this->getJson('/api/v1/customers/16/transactions?type=CustInvc&search=SPECIAL-PART')
+        ->assertOk()->assertJsonPath('meta.total', 0);
+})->with(['is_mainline', 'is_tax_line', 'is_discount_line']);
+
+it('limits part matching to invoices even when no transaction type is selected', function () {
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+    foreach (['SalesOrd', 'CustCred', 'CustPymt'] as $type) {
+        $document = Transaction::factory()->for($this->company)->create(['type' => $type]);
+        TransactionLine::factory()->for($document)->create(['item_number' => 'SPECIAL-PART']);
+    }
+
+    $this->getJson('/api/v1/customers/16/transactions?search=SPECIAL-PART')
+        ->assertOk()->assertJsonPath('meta.total', 0);
+});

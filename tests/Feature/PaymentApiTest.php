@@ -10,7 +10,7 @@ use Laravel\Sanctum\Sanctum;
 it('lists customer payments and exposes only applications to the same customer', function () {
     Http::preventStrayRequests();
     $company = Company::factory()->create(['id' => 16]);
-    $payment = Transaction::factory()->for($company)->create(['id' => 1517, 'type' => 'CustPymt']);
+    $payment = Transaction::factory()->for($company)->create(['id' => 1517, 'type' => 'CustPymt', 'memo' => 'Credit Card Customer']);
     Transaction::factory()->create(['type' => 'CustPymt']);
     PaymentApplication::factory()->for($payment)->create(['target_customer_id' => 16, 'target_netsuite_id' => 1347, 'foreign_amount' => '60']);
     PaymentApplication::factory()->for($payment)->create(['target_customer_id' => 17, 'target_netsuite_id' => 1489]);
@@ -18,8 +18,8 @@ it('lists customer payments and exposes only applications to the same customer',
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
 
     $this->getJson('/api/v1/customers/16/transactions?type=CustPymt')->assertOk()->assertJsonPath('meta.total', 1)
-        ->assertJsonPath('data.0.netsuite_id', 1517)->assertJsonPath('sync.payments.status', 'never_synced');
-    $this->getJson('/api/v1/customers/16/transactions/1517')->assertOk()->assertJsonCount(1, 'data.payment_applications')
+        ->assertJsonPath('data.0.memo', 'Credit Card Customer')->assertJsonPath('data.0.netsuite_id', 1517)->assertJsonPath('sync.payments.status', 'never_synced');
+    $this->getJson('/api/v1/customers/16/transactions/1517')->assertOk()->assertJsonPath('data.memo', 'Credit Card Customer')->assertJsonCount(1, 'data.payment_applications')
         ->assertJsonPath('data.payment_applications.0.target_netsuite_id', 1347)
         ->assertJsonPath('data.payment_applications.0.foreign_amount', '60.00000000')
         ->assertJsonMissingPath('data.payment_applications.0.raw_payload')
