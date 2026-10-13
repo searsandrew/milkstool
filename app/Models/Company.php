@@ -42,6 +42,10 @@ class Company extends Model
             'payments_sync_started_at' => 'immutable_datetime',
             'payments_next_sync_at' => 'immutable_datetime',
             'payments_backfilled_at' => 'immutable_datetime',
+            'return_authorizations_synced_at' => 'immutable_datetime',
+            'return_authorizations_sync_started_at' => 'immutable_datetime',
+            'return_authorizations_next_sync_at' => 'immutable_datetime',
+            'return_authorizations_backfilled_at' => 'immutable_datetime',
             'credit_memos_synced_at' => 'immutable_datetime',
             'credit_memos_sync_started_at' => 'immutable_datetime',
             'credit_memos_next_sync_at' => 'immutable_datetime',
@@ -96,7 +100,7 @@ class Company extends Model
 
     private function assertSyncPrefix(string $prefix): void
     {
-        if (! in_array($prefix, ['sales_orders', 'invoices', 'credit_memos', 'balance', 'payments'], true)) {
+        if (! in_array($prefix, ['sales_orders', 'invoices', 'credit_memos', 'balance', 'payments', 'return_authorizations'], true)) {
             throw new InvalidArgumentException('Unknown sync category.');
         }
     }

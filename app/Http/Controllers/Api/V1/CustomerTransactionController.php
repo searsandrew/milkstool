@@ -16,7 +16,7 @@ class CustomerTransactionController extends Controller
     public function index(Request $request, Company $customer): AnonymousResourceCollection
     {
         $filters = $request->validate([
-            'type' => ['sometimes', 'in:SalesOrd,CustInvc,CustCred,CustPymt'],
+            'type' => ['sometimes', 'in:SalesOrd,CustInvc,CustCred,CustPymt,RtnAuth'],
             'outstanding' => ['sometimes', 'boolean'],
             'from' => ['sometimes', 'date_format:Y-m-d'],
             'to' => ['sometimes', 'date_format:Y-m-d', ...($request->has('from') ? ['after_or_equal:from'] : [])],
@@ -25,13 +25,17 @@ class CustomerTransactionController extends Controller
             'sort_by' => ['sometimes', 'in:number,date,status,amount'],
             'sort_direction' => ['sometimes', 'in:asc,desc'],
             'search' => ['sometimes', 'nullable', 'string', 'max:200'],
+            'external_id' => ['sometimes', 'string', 'max:255'],
         ]);
         if ($request->boolean('outstanding') && isset($filters['type']) && $filters['type'] !== 'CustInvc') {
             throw ValidationException::withMessages(['outstanding' => 'Outstanding amounts are available for invoices only.']);
         }
-        $query = $customer->transactions()->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred', 'CustPymt']);
+        $query = $customer->transactions()->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred', 'CustPymt', 'RtnAuth']);
         if (isset($filters['type'])) {
             $query->where('type', $filters['type']);
+        }
+        if (isset($filters['external_id'])) {
+            $query->where('external_id', $filters['external_id']);
         }
         if ($request->boolean('outstanding')) {
             $query->where('type', 'CustInvc')->where('foreign_amount_unpaid', '>', 0);
@@ -72,7 +76,7 @@ class CustomerTransactionController extends Controller
     public function show(Company $customer, string $transaction): TransactionResource
     {
         $document = $customer->transactions()->where('id', $transaction)
-            ->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred', 'CustPymt'])
+            ->whereIn('type', ['SalesOrd', 'CustInvc', 'CustCred', 'CustPymt', 'RtnAuth'])
             ->with(['creditMemoApplications' => fn ($query) => $query->where('target_customer_id', $customer->id)
                 ->orderBy('credit_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'paymentApplications' => fn ($query) => $query->where('target_customer_id', $customer->id)
                 ->orderBy('payment_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'lines' => fn ($query) => $query->orderBy('netsuite_line_id')])->firstOrFail();

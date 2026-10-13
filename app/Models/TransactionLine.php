@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['transaction_id', 'netsuite_line_id', 'item_id', 'item_number', 'memo', 'quantity', 'rate', 'amount', 'is_mainline', 'is_tax_line', 'is_discount_line', 'line_type', 'raw_payload', 'source_transaction_id'])]
+#[Fillable(['transaction_id', 'netsuite_line_id', 'item_id', 'item_number', 'memo', 'quantity', 'rate', 'amount', 'is_mainline', 'is_tax_line', 'is_discount_line', 'line_type', 'raw_payload', 'source_transaction_id', 'source_transaction_line_id'])]
 class TransactionLine extends Model
 {
     /** @use HasFactory<TransactionLineFactory> */
@@ -22,6 +22,7 @@ class TransactionLine extends Model
             'is_mainline' => 'boolean', 'is_tax_line' => 'boolean', 'is_discount_line' => 'boolean',
             'raw_payload' => 'array',
             'source_transaction_id' => 'integer',
+            'source_transaction_line_id' => 'integer',
         ];
     }
 

@@ -13,7 +13,7 @@ use Throwable;
 
 class ServiceHealth
 {
-    public const array QUEUES = ['customers', 'balances', 'sales-orders', 'invoices', 'credit-memos', 'payments'];
+    public const array QUEUES = ['customers', 'balances', 'sales-orders', 'invoices', 'credit-memos', 'payments', 'return-authorizations'];
 
     /** @return list<string> */
     public static function queues(): array
@@ -76,7 +76,7 @@ class ServiceHealth
     {
         $companies = Company::query()->where('is_active', true)->get();
         $types = [];
-        foreach (['sales_orders', 'invoices', 'credit_memos', 'balance', 'payments'] as $prefix) {
+        foreach (['sales_orders', 'invoices', 'credit_memos', 'balance', 'payments', 'return_authorizations'] as $prefix) {
             $types[$prefix] = ['failed' => 0, 'never_synced' => 0, 'overdue' => 0, 'unfinished' => 0];
             foreach ($companies as $company) {
                 $success = $company->{$prefix.'_synced_at'};

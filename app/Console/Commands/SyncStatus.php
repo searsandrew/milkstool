@@ -13,7 +13,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 class SyncStatus extends Command
 {
     protected $signature = 'milkstool:sync-status
-        {--type=sales-orders : sales-orders, invoices, credit-memos, payments, or balances}
+        {--type=sales-orders : sales-orders, invoices, credit-memos, payments, return-authorizations, or balances}
         {--customer= : NetSuite internal ID, including inactive customers}
         {--attention : Show only active customers with unfinished backfills or refreshes needing attention}
         {--include-inactive : Include inactive customers in the list}
@@ -28,11 +28,12 @@ class SyncStatus extends Command
             'invoices' => ['invoices', 'CustInvc', 'invoice_count', 'Invoices'],
             'credit-memos' => ['credit_memos', 'CustCred', 'credit_memo_count', 'Credit memos'],
             'payments' => ['payments', 'CustPymt', 'payment_count', 'Payments'],
+            'return-authorizations' => ['return_authorizations', 'RtnAuth', 'return_authorization_count', 'RMAs'],
             'balances' => ['balance', null, 'snapshot_count', 'Snapshots'],
         ];
         $type = $this->option('type');
         if (! isset($types[$type])) {
-            $this->error('Type must be sales-orders, invoices, credit-memos, payments, or balances.');
+            $this->error('Type must be sales-orders, invoices, credit-memos, payments, return-authorizations, or balances.');
 
             return self::FAILURE;
         }

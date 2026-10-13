@@ -6,6 +6,7 @@ use App\Jobs\RefreshCreditMemos;
 use App\Jobs\RefreshCustomerBalance;
 use App\Jobs\RefreshInvoices;
 use App\Jobs\RefreshPayments;
+use App\Jobs\RefreshReturnAuthorizations;
 use App\Jobs\RefreshSalesOrders;
 use App\Models\Company;
 use Illuminate\Console\Command;
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\Builder;
 class RecoverFailedSyncs extends Command
 {
     protected $signature = 'milkstool:recover-failed-syncs
-        {--type=invoices : invoices, sales-orders, credit-memos, payments, or balances}
+        {--type=invoices : invoices, sales-orders, credit-memos, payments, return-authorizations, or balances}
         {--customer= : Recover only this active customer}
         {--limit=5 : Maximum customers, between 1 and 1000}
         {--dry-run : List candidates without queueing}';
@@ -28,6 +29,7 @@ class RecoverFailedSyncs extends Command
             'sales-orders' => ['sales_orders', RefreshSalesOrders::class],
             'credit-memos' => ['credit_memos', RefreshCreditMemos::class],
             'payments' => ['payments', RefreshPayments::class],
+            'return-authorizations' => ['return_authorizations', RefreshReturnAuthorizations::class],
             'balances' => ['balance', RefreshCustomerBalance::class],
         ];
         $type = $this->option('type');

@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['id', 'company_id', 'type', 'number', 'purchase_order_number', 'transaction_date', 'status', 'status_name', 'currency_id', 'total', 'foreign_total', 'memo', 'netsuite_updated_at', 'synced_at', 'raw_payload', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid', 'invoice_details', 'invoice_details_synced_at', 'credit_applied', 'credit_remaining'])]
+#[Fillable(['id', 'company_id', 'type', 'number', 'purchase_order_number', 'transaction_date', 'status', 'status_name', 'currency_id', 'total', 'foreign_total', 'memo', 'netsuite_updated_at', 'synced_at', 'raw_payload', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid', 'invoice_details', 'invoice_details_synced_at', 'credit_applied', 'credit_remaining', 'external_id'])]
 class Transaction extends Model
 {
     /** @use HasFactory<TransactionFactory> */

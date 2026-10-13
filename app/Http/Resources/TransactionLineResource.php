@@ -13,6 +13,10 @@ class TransactionLineResource extends JsonResource
         return [
             'netsuite_line_id' => (int) $this->netsuite_line_id,
             'source_transaction_id' => $this->source_transaction_id,
+            'source_transaction_line_id' => $this->when($this->source_transaction_line_id !== null, $this->source_transaction_line_id),
+            'quantity_received' => $this->when(array_key_exists('quantity_received', $this->raw_payload), $this->raw_payload['quantity_received'] ?? null),
+            'quantity_billed' => $this->when(array_key_exists('quantity_billed', $this->raw_payload), $this->raw_payload['quantity_billed'] ?? null),
+            'is_closed' => $this->when(array_key_exists('is_closed', $this->raw_payload), $this->raw_payload['is_closed'] ?? null),
             'item_id' => $this->item_id,
             'item_number' => $this->item_number,
             'item_type' => $this->raw_payload['item_type'] ?? null,

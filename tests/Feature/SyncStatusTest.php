@@ -115,6 +115,7 @@ it('reports global queue states and scopes failed jobs without exposing their pa
         ['name' => 'balances', 'ready' => 1, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
         ['name' => 'payments', 'ready' => 0, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
         ['name' => 'invoice-enrichment', 'ready' => 0, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
+        ['name' => 'return-authorizations', 'ready' => 0, 'delayed' => 0, 'reserved' => 0, 'expired_reservations' => 0, 'failed' => 0],
     ]);
     expect(Artisan::output())->not->toContain('private payload', 'private exception');
     $this->assertDatabaseCount('jobs', 9);

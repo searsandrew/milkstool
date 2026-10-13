@@ -31,7 +31,7 @@ function processHealthProbes(): void
 it('proves each queue is processing and deduplicates probes while workers are stopped', function () {
     $this->artisan('milkstool:heartbeat')->assertSuccessful();
     $this->artisan('milkstool:heartbeat')->assertSuccessful();
-    $this->assertDatabaseCount('jobs', 6);
+    $this->assertDatabaseCount('jobs', 7);
     expect(app(ServiceHealth::class)->report()['healthy'])->toBeFalse();
     foreach (ServiceHealth::QUEUES as $queue) {
         Queue::connection('netsuite')->pop($queue)->fire();
@@ -136,7 +136,7 @@ it('schedules heartbeats every minute only when scheduled sync is enabled', func
 it('reports failed and stale data even when all processes are healthy', function () {
     processHealthProbes();
     $attributes = ['is_active' => true];
-    foreach (['sales_orders', 'invoices', 'credit_memos', 'balance', 'payments'] as $prefix) {
+    foreach (['sales_orders', 'invoices', 'credit_memos', 'balance', 'payments', 'return_authorizations'] as $prefix) {
         $attributes[$prefix.'_synced_at'] = now();
     }
     $attributes['invoices_synced_at'] = now()->subHours(7);
