@@ -23,7 +23,8 @@ beforeEach(function () {
 function sourceRma(array $overrides = []): array
 {
     return sourceOrder(array_replace(['id' => '9001', 'type' => 'RtnAuth', 'number' => 'RMA-9001',
-        'status' => 'A', 'status_name' => 'Return Authorization : Pending Approval', 'external_id' => 'saturn-v-return-example'], $overrides));
+        'status' => 'A', 'status_name' => 'Return Authorization : Pending Approval', 'external_id' => 'saturn-v-return-example',
+        'total' => '-25.12345678', 'foreign_total' => '-25.12345678'], $overrides));
 }
 
 /** @param array<string, mixed> $overrides
@@ -220,4 +221,14 @@ it('does not replace local lines when the record changes between reads', functio
 
     $this->assertDatabaseHas('transaction_lines', ['transaction_id' => 9001, 'netsuite_line_id' => 99]);
     $this->assertDatabaseCount('transaction_lines', 1);
+});
+
+it('reconciles negative SuiteQL return totals with positive REST amounts while preserving signed stored totals', function () {
+    Company::factory()->create(['id' => 16]);
+    fakeRmaRead([sourceRma(['total' => '-51.98', 'foreign_total' => '-51.98'])], sourceRmaRecord(['total' => '51.98']));
+
+    $this->artisan('milkstool:sync-return-authorizations', ['customer' => 16])->assertSuccessful();
+
+    $this->assertDatabaseHas('transactions', ['id' => 9001, 'total' => '-51.98', 'foreign_total' => '-51.98']);
+    $this->assertDatabaseHas('companies', ['id' => 16, 'return_authorizations_sync_error' => null]);
 });

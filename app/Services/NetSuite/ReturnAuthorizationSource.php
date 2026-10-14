@@ -83,8 +83,9 @@ class ReturnAuthorizationSource
             throw new RuntimeException('NetSuite returned incomplete RMA lines. Existing lines were retained.');
         }
         $modified = CarbonImmutable::parse($record['lastModifiedDate'])->utc();
+        $expectedRecordTotal = BigDecimal::of((string) $header['foreign_total'])->negated();
         if (! $modified->startOfMinute()->equalTo(CarbonImmutable::parse($header['updated_at'], 'UTC')->startOfMinute())
-            || ! BigDecimal::of((string) $record['total'])->isEqualTo((string) $header['foreign_total'])) {
+            || ! BigDecimal::of((string) $record['total'])->isEqualTo($expectedRecordTotal)) {
             throw new ReceivableSyncInterrupted('RMA record and listing describe different source versions. Retry the sync.');
         }
         $lines = [];
