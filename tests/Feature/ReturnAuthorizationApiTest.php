@@ -42,3 +42,25 @@ it('returns cached RMA status decimal amounts and per-line source references wit
     $this->getJson('/api/v1/customers/'.$other->id.'/transactions/9001')->assertNotFound();
     Http::assertNothingSent();
 });
+
+it('includes linked references and excludes duplicates without crossing customer boundaries', function () {
+    $company = Company::factory()->create(['id' => 16]);
+    Transaction::factory()->for($company)->create(['id' => 9001, 'type' => 'RtnAuth', 'external_id' => 'request-one']);
+    Transaction::factory()->for($company)->create(['id' => 9002, 'type' => 'RtnAuth', 'external_id' => 'request-two']);
+    Transaction::factory()->for($company)->create(['id' => 9004, 'type' => 'RtnAuth', 'external_id' => null]);
+    Transaction::factory()->create(['id' => 9003, 'type' => 'RtnAuth', 'external_id' => 'request-two']);
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+
+    $this->getJson('/api/v1/customers/16/transactions?'.http_build_query(['type' => 'RtnAuth', 'ids' => [9001], 'external_ids' => ['request-two']]))
+        ->assertOk()->assertJsonPath('meta.total', 2)->assertJsonMissing(['netsuite_id' => 9003]);
+    $this->getJson('/api/v1/customers/16/transactions?'.http_build_query(['type' => 'RtnAuth', 'exclude_ids' => [9001], 'exclude_external_ids' => ['request-two']]))
+        ->assertOk()->assertJsonPath('meta.total', 1)->assertJsonPath('data.0.netsuite_id', 9004);
+});
+
+it('rejects malformed transaction reference filters', function () {
+    Company::factory()->create(['id' => 16]);
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+
+    $this->getJson('/api/v1/customers/16/transactions?'.http_build_query(['exclude_ids' => ['1 OR 1=1']]))->assertUnprocessable();
+    $this->getJson('/api/v1/customers/16/transactions?'.http_build_query(['external_ids' => [['not-a-string']]]))->assertUnprocessable();
+});

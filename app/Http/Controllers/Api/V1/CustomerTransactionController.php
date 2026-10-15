@@ -26,6 +26,10 @@ class CustomerTransactionController extends Controller
             'sort_direction' => ['sometimes', 'in:asc,desc'],
             'search' => ['sometimes', 'nullable', 'string', 'max:200'],
             'external_id' => ['sometimes', 'string', 'max:255'],
+            'ids' => ['sometimes', 'array', 'max:1000'], 'ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'external_ids' => ['sometimes', 'array', 'max:1000'], 'external_ids.*' => ['required', 'string', 'max:255', 'distinct'],
+            'exclude_ids' => ['sometimes', 'array', 'max:1000'], 'exclude_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'exclude_external_ids' => ['sometimes', 'array', 'max:1000'], 'exclude_external_ids.*' => ['required', 'string', 'max:255', 'distinct'],
         ]);
         if ($request->boolean('outstanding') && isset($filters['type']) && $filters['type'] !== 'CustInvc') {
             throw ValidationException::withMessages(['outstanding' => 'Outstanding amounts are available for invoices only.']);
@@ -36,6 +40,17 @@ class CustomerTransactionController extends Controller
         }
         if (isset($filters['external_id'])) {
             $query->where('external_id', $filters['external_id']);
+        }
+        if (isset($filters['ids']) || isset($filters['external_ids'])) {
+            $query->where(function (Builder $references) use ($filters): void {
+                $references->whereIn('id', $filters['ids'] ?? [])->orWhereIn('external_id', $filters['external_ids'] ?? []);
+            });
+        }
+        if (! empty($filters['exclude_ids'])) {
+            $query->whereNotIn('id', $filters['exclude_ids']);
+        }
+        if (! empty($filters['exclude_external_ids'])) {
+            $query->where(fn (Builder $excluded) => $excluded->whereNull('external_id')->orWhereNotIn('external_id', $filters['exclude_external_ids']));
         }
         if ($request->boolean('outstanding')) {
             $query->where('type', 'CustInvc')->where('foreign_amount_unpaid', '>', 0);
