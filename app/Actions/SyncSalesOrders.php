@@ -68,7 +68,7 @@ class SyncSalesOrders
                 foreach ($batch as $order) {
                     $saved = $existing->get((int) $order['id']);
 
-                    if ($saved !== null && $saved->raw_payload == $order && $saved->lines_count > 0) {
+                    if ($saved !== null && array_diff_key($saved->raw_payload, ['sales_order_details' => true]) == $order && $saved->lines_count > 0) {
                         $orders++;
                         $lineCount += $saved->lines_count;
                     } else {
@@ -190,7 +190,7 @@ class SyncSalesOrders
                 'memo' => $order['memo'] ?? null,
                 'netsuite_updated_at' => $order['updated_at'],
                 'synced_at' => now(),
-                'raw_payload' => $order,
+                'raw_payload' => [...$order, ...(isset($transaction->raw_payload['sales_order_details']) ? ['sales_order_details' => $transaction->raw_payload['sales_order_details']] : [])],
             ])->save();
 
             $lineIds = [];

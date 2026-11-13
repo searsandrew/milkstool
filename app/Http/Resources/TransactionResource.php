@@ -36,6 +36,7 @@ class TransactionResource extends JsonResource
             'applied_payments' => InvoiceSettlementResource::collection($this->whenLoaded('appliedPayments')),
             'applied_credits' => InvoiceSettlementResource::collection($this->whenLoaded('appliedCredits')),
             'settlements_scope' => $this->when($this->relationLoaded('appliedPayments'), 'same_customer'),
+            'sales_order_details' => $this->when($this->type === 'SalesOrd' && $this->relationLoaded('lines'), fn () => ($this->raw_payload['sales_order_details']['header_updated_at'] ?? null) === $this->netsuite_updated_at?->utc()->format('Y-m-d H:i:s') ? ($this->raw_payload['sales_order_details'] ?? null) : null),
             'invoice_details' => $this->when($this->type === 'CustInvc' && $this->relationLoaded('lines'), fn () => $this->invoice_details === null ? null : [
                 ...array_intersect_key($this->invoice_details, array_flip(['billing_address', 'shipping_address', 'terms_id', 'terms_name', 'ship_date', 'shipping_method'])),
                 'tracking_numbers' => $this->invoice_details['tracking_numbers'] ?? null,

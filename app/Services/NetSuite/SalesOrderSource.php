@@ -154,7 +154,7 @@ class SalesOrderSource
         do {
             $page = $this->client->query(<<<SQL
                 SELECT transactionline.transaction AS transaction_id, transactionline.id AS line_id,
-                    transactionline.item AS item_id, item.itemid AS item_number,
+                    transactionline.item AS item_id, item.itemid AS item_number, transactionline.itemtype AS item_type,
                     transactionline.quantity, transactionline.rate, transactionline.netamount AS amount,
                     transactionline.memo, transactionline.mainline, transactionline.taxline,
                     transactionline.transactiondiscount AS discount_line,

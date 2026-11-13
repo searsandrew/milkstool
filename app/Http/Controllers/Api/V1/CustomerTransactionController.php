@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CustomerSyncResource;
 use App\Http\Resources\TransactionResource;
+use App\Jobs\RefreshSalesOrderDetails;
 use App\Models\Company;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -95,6 +97,14 @@ class CustomerTransactionController extends Controller
             ->with(['creditMemoApplications' => fn ($query) => $query->where('target_customer_id', $customer->id)
                 ->orderBy('credit_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'paymentApplications' => fn ($query) => $query->where('target_customer_id', $customer->id)
                 ->orderBy('payment_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'lines' => fn ($query) => $query->orderBy('netsuite_line_id')])->firstOrFail();
+
+        if ($document->type === 'SalesOrd') {
+            $details = $document->raw_payload['sales_order_details'] ?? [];
+            if (($details['header_updated_at'] ?? null) !== $document->netsuite_updated_at?->utc()->format('Y-m-d H:i:s')
+                || ! isset($details['synced_at']) || CarbonImmutable::parse($details['synced_at'])->lte(now()->subMinutes(15))) {
+                RefreshSalesOrderDetails::dispatch((int) $customer->id, (int) $document->id);
+            }
+        }
 
         if ($document->type === 'CustInvc') {
             $document->setRelation('salesOrders', $customer->transactions()
