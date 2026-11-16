@@ -21,7 +21,7 @@ class StorePayment
         $paymentId = (int) $payment['id'];
 
         return DB::transaction(function () use ($company, $paymentId, $payment, $lines, $applications): Transaction {
-            $transaction = Transaction::query()->firstOrNew(['id' => $paymentId]);
+            $transaction = Transaction::query()->withoutGlobalScope('present_in_netsuite')->firstOrNew(['id' => $paymentId]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'CustPymt')) {
                 throw new RuntimeException('This transaction belongs to another customer or transaction type.');
@@ -34,6 +34,7 @@ class StorePayment
             foreach (['purchase_order_number', 'status_name', 'memo', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid'] as $nullable) {
                 $attributes[$nullable] = $payment[$nullable] ?? null;
             }
+            $transaction->restoreSourcePresence();
             $transaction->fill([...$attributes, 'company_id' => $company->id,
                 'netsuite_updated_at' => $payment['updated_at'], 'synced_at' => now(), 'raw_payload' => $payment])->save();
 

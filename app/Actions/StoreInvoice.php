@@ -21,7 +21,7 @@ class StoreInvoice
         $invoiceId = (int) $invoice['id'];
 
         return DB::transaction(function () use ($company, $invoiceId, $invoice, $lines, $summary): Transaction {
-            $transaction = Transaction::query()->firstOrNew(['id' => $invoiceId]);
+            $transaction = Transaction::query()->withoutGlobalScope('present_in_netsuite')->firstOrNew(['id' => $invoiceId]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'CustInvc')) {
                 throw new RuntimeException('This transaction belongs to another customer or transaction type.');
@@ -38,6 +38,7 @@ class StoreInvoice
             foreach (['purchase_order_number', 'status_name', 'memo', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid'] as $nullable) {
                 $attributes[$nullable] = $invoice[$nullable] ?? null;
             }
+            $transaction->restoreSourcePresence();
             $transaction->fill([...$attributes, 'company_id' => $company->id,
                 'netsuite_updated_at' => $invoice['updated_at'], 'synced_at' => now(), 'raw_payload' => $invoice]);
             $transaction->fillInvoiceDetails($invoice);

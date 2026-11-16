@@ -24,6 +24,7 @@ class InvoiceReconciliation
             ->groupBy('currency_id')->toBase()->get()->keyBy('currency_id');
         $localLines = TransactionLine::query()
             ->join('transactions', 'transactions.id', '=', 'transaction_lines.transaction_id')
+            ->whereNull('transactions.source_missing_at')
             ->where('transactions.company_id', $company->id)->where('transactions.type', 'CustInvc')
             ->selectRaw('transactions.currency_id, COUNT(*) AS line_count, COUNT(quantity) AS quantity_count, COUNT(amount) AS amount_count, COALESCE(SUM(quantity), 0) AS quantity, COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(CASE WHEN is_mainline = 0 THEN amount ELSE 0 END), 0) AS detail_amount')
             ->groupBy('transactions.currency_id')->toBase()->get()->keyBy('currency_id');

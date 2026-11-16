@@ -18,7 +18,7 @@ class StoreReturnAuthorization
     public function handle(Company $company, array $header, array $lines): Transaction
     {
         return DB::transaction(function () use ($company, $header, $lines): Transaction {
-            $transaction = Transaction::query()->firstOrNew(['id' => (int) $header['id']]);
+            $transaction = Transaction::query()->withoutGlobalScope('present_in_netsuite')->firstOrNew(['id' => (int) $header['id']]);
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'RtnAuth')) {
                 throw new RuntimeException('This RMA ID belongs to another customer or transaction type.');
             }
@@ -28,6 +28,7 @@ class StoreReturnAuthorization
             foreach (['external_id', 'status_name', 'memo'] as $nullable) {
                 $attributes[$nullable] = $header[$nullable] ?? null;
             }
+            $transaction->restoreSourcePresence();
             $transaction->fill([...$attributes, 'company_id' => $company->id, 'netsuite_updated_at' => $header['updated_at'],
                 'synced_at' => now(), 'raw_payload' => $header])->save();
             $ids = [];

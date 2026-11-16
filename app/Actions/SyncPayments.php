@@ -16,7 +16,7 @@ use Throwable;
 
 class SyncPayments
 {
-    public function __construct(private PaymentSource $source, private PaymentApplicationSource $applications, private CustomerSource $customers, private StorePayment $store, private PaymentReconciliation $reconciliation) {}
+    public function __construct(private PaymentSource $source, private PaymentApplicationSource $applications, private CustomerSource $customers, private StorePayment $store, private PaymentReconciliation $reconciliation, private FlagMissingSourceTransactions $missing) {}
 
     /**
      * @param  (Closure(int, int): void)|null  $onProgress
@@ -37,9 +37,11 @@ class SyncPayments
             $company->forceFill(['payments_sync_started_at' => now(), 'payments_sync_error' => null])->save();
             $this->customers->find($customerId);
             $payments = 0;
+            $sourceIds = [];
             $lineCount = 0;
             foreach (LazyCollection::make(fn () => $this->source->payments($customerId))->chunk(50) as $batch) {
                 $ids = $batch->map(fn (array $payment): int => (int) $payment['id'])->values()->all();
+                $sourceIds = [...$sourceIds, ...$ids];
                 $lines = $this->source->linesForPayments($customerId, $ids);
                 $applications = $this->applications->forPayments($customerId, $ids);
                 $latestApplications = $this->applications->forPayments($customerId, $ids);
@@ -66,6 +68,7 @@ class SyncPayments
             if (! $lock->refresh(600) && ! $lock->isOwnedByCurrentProcess()) {
                 throw new ReceivableSyncInterrupted('The payment sync lock expired. Retry the sync.');
             }
+            $this->missing->handle($company, 'CustPymt', $sourceIds);
             if ($company->transactions()->where('type', 'CustPymt')->count() !== $payments) {
                 throw new RuntimeException('Local payment count differs from the source scan. Missing payments were retained; investigate before retrying.');
             }

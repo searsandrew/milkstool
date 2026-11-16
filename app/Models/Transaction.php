@@ -18,10 +18,26 @@ class Transaction extends Model
 
     public $incrementing = false;
 
+    protected static function booted(): void
+    {
+        static::addGlobalScope('present_in_netsuite', fn (Builder $query) => $query->whereNull($query->qualifyColumn('source_missing_at')));
+    }
+
+    public function restoreSourcePresence(): void
+    {
+        if ($this->source_missing_at !== null) {
+            $this->source_review_context = [...($this->source_review_context ?? []), 'last_reappeared_at' => now()->utc()->toIso8601String()];
+            $this->source_missing_at = null;
+        }
+    }
+
     /** @return array<string, string> */
     protected function casts(): array
     {
         return [
+            'source_missing_at' => 'immutable_datetime',
+            'source_review_required_at' => 'immutable_datetime',
+            'source_review_context' => 'array',
             'transaction_date' => 'immutable_date',
             'due_date' => 'immutable_date',
             'credit_applied' => 'decimal:8',

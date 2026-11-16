@@ -15,7 +15,7 @@ use Throwable;
 
 class SyncSalesOrders
 {
-    public function __construct(private SalesOrderSource $source) {}
+    public function __construct(private SalesOrderSource $source, private FlagMissingSourceTransactions $missing) {}
 
     /**
      * @param  (Closure(int, int): void)|null  $onProgress
@@ -43,6 +43,7 @@ class SyncSalesOrders
             ]);
             $company->forceFill(['sales_orders_sync_started_at' => now(), 'sales_orders_sync_error' => null])->save();
             $orders = 0;
+            $sourceIds = [];
             $lineCount = 0;
             $checkpoint = $incremental ? $this->source->currentTime()->subMinutes(2) : null;
             $fullScan = ! $incremental || $company->sales_orders_checkpoint_at === null
@@ -66,6 +67,7 @@ class SyncSalesOrders
                     : collect();
 
                 foreach ($batch as $order) {
+                    $sourceIds[] = (int) $order['id'];
                     $saved = $existing->get((int) $order['id']);
 
                     if ($saved !== null && array_diff_key($saved->raw_payload, ['sales_order_details' => true]) == $order && $saved->lines_count > 0) {
@@ -109,6 +111,9 @@ class SyncSalesOrders
                 throw new SalesOrderSyncInterrupted('The sync lock expired. Retry the sync.');
             }
 
+            if ($fullScan) {
+                $this->missing->handle($company, 'SalesOrd', $sourceIds);
+            }
             $localOrders = $company->transactions()->where('type', 'SalesOrd')->count();
 
             if ($fullScan && $localOrders !== $orders) {
@@ -170,12 +175,13 @@ class SyncSalesOrders
     private function storeOrder(Company $company, array $order, array $lines): void
     {
         DB::transaction(function () use ($company, $order, $lines): void {
-            $transaction = Transaction::query()->firstOrNew(['id' => $order['id']]);
+            $transaction = Transaction::query()->withoutGlobalScope('present_in_netsuite')->firstOrNew(['id' => $order['id']]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'SalesOrd')) {
                 throw new RuntimeException('The sales order is already associated with another customer or transaction type; reconciliation is required.');
             }
 
+            $transaction->restoreSourcePresence();
             $transaction->fill([
                 'company_id' => $company->id,
                 'type' => $order['type'],

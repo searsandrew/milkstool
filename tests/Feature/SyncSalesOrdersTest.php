@@ -86,15 +86,16 @@ it('does not move an existing order between customers automatically', function (
     $this->assertDatabaseCount('transaction_lines', 0);
 });
 
-it('retains missing source orders and reports a reconciliation mismatch', function () {
+it('retains missing orders when source absence verification fails', function () {
     $company = Company::factory()->create(['id' => 16]);
     $order = Transaction::factory()->for($company)->create(['id' => 100]);
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
-        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))]);
+        ->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push([], 500)]);
 
     $this->artisan('milkstool:sync-sales-orders', ['customer' => '16'])->assertFailed();
 
     $this->assertModelExists($order);
+    expect($order->fresh()->source_missing_at)->toBeNull();
     expect($company->refresh()->sales_orders_synced_at)->toBeNull();
 });
 

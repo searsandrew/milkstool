@@ -169,11 +169,12 @@ it('refuses transaction collisions with another company or type', function (bool
     $this->assertDatabaseCount('payment_applications', 0);
 })->with([true, false]);
 
-it('keeps missing source payments instead of silently deleting financial history', function () {
+it('keeps missing payments when source absence verification fails', function () {
     $payment = Transaction::factory()->for($this->company)->create(['type' => 'CustPymt']);
-    Http::fake(['https://netsuite.example/*' => Http::sequence()->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))]);
+    Http::fake(['https://netsuite.example/*' => Http::sequence()->push(sourcePage([sourceCustomer()]))->push(sourcePage([]))->push([], 500)]);
     $this->artisan('milkstool:sync-payments', ['customer' => 16])->assertFailed();
     $this->assertModelExists($payment);
+    expect($payment->fresh()->source_missing_at)->toBeNull();
 });
 
 it('queues unique payment refreshes without making source requests', function () {

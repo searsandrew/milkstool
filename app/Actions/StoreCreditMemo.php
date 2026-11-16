@@ -21,7 +21,7 @@ class StoreCreditMemo
         $creditMemoId = (int) $creditMemo['id'];
 
         return DB::transaction(function () use ($company, $creditMemoId, $creditMemo, $lines, $applications): Transaction {
-            $transaction = Transaction::query()->firstOrNew(['id' => $creditMemoId]);
+            $transaction = Transaction::query()->withoutGlobalScope('present_in_netsuite')->firstOrNew(['id' => $creditMemoId]);
 
             if ($transaction->exists && ($transaction->company_id !== $company->id || $transaction->type !== 'CustCred')) {
                 throw new RuntimeException('This transaction belongs to another customer or transaction type.');
@@ -34,6 +34,7 @@ class StoreCreditMemo
             foreach (['purchase_order_number', 'status_name', 'memo', 'due_date', 'foreign_amount_paid', 'foreign_amount_unpaid', 'credit_applied', 'credit_remaining'] as $nullable) {
                 $attributes[$nullable] = $creditMemo[$nullable] ?? null;
             }
+            $transaction->restoreSourcePresence();
             $transaction->fill([...$attributes, 'company_id' => $company->id,
                 'netsuite_updated_at' => $creditMemo['updated_at'], 'synced_at' => now(), 'raw_payload' => $creditMemo])->save();
 
