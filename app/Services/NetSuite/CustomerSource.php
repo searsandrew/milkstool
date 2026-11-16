@@ -56,7 +56,7 @@ class CustomerSource
 
     private function selectSql(): string
     {
-        return 'SELECT id, companyname AS name, custentity3 AS account_number, salesrep AS sales_rep_id, isinactive, '
+        return 'SELECT id, companyname AS name, custentity3 AS account_number, salesrep AS sales_rep_id, parent AS parent_id, isinactive, '
             ."TO_CHAR(SYS_EXTRACT_UTC(lastmodifieddate), 'YYYY-MM-DD HH24:MI:SS') AS updated_at";
     }
 
@@ -68,6 +68,7 @@ class CustomerSource
             'name' => ['required', 'string', 'max:255'],
             'account_number' => ['nullable', 'string', 'max:255'],
             'sales_rep_id' => ['nullable', 'integer'],
+            'parent_id' => ['nullable', 'integer', 'min:1'],
             'isinactive' => ['required', 'in:T,F'],
             'updated_at' => ['required', 'date_format:Y-m-d H:i:s'],
         ])->validate();

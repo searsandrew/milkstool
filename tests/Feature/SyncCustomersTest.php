@@ -236,3 +236,14 @@ it('preserves negative and nullable NetSuite sales-rep references', function (?s
     expect($company->raw_payload['sales_rep_id'])->toBe($salesRepId);
     Http::assertSentCount(1);
 })->with(['negative' => ['-5'], 'unassigned' => [null]]);
+
+it('stores and clears the source parent relationship during customer discovery', function () {
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+        ->push(sourcePage([array_replace(sourceCustomer(), ['stage' => 'CUSTOMER', 'parent_id' => '1808'])]))
+        ->push(sourcePage([array_replace(sourceCustomer(), ['stage' => 'CUSTOMER'])]))]);
+    app(SyncCustomers::class)->handle();
+    expect(Company::findOrFail(16)->raw_payload['parent_id'])->toBe('1808');
+    app(SyncCustomers::class)->handle();
+    expect(Company::findOrFail(16)->raw_payload)->not->toHaveKey('parent_id');
+    Http::assertSent(fn ($request) => str_contains($request['q'], 'parent AS parent_id'));
+});

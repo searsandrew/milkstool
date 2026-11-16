@@ -118,8 +118,10 @@ class CustomerTransactionController extends Controller
                 $document->load([$relation => fn ($query) => $query
                     ->where('target_customer_id', $customer->id)
                     ->where('target_type', 'CustInvc')
-                    ->whereHas('transaction', fn ($source) => $source->where('company_id', $customer->id)->where('type', $type))
-                    ->with('transaction:id,type,number,transaction_date,currency_id,synced_at')
+                    ->whereHas('transaction', fn ($source) => $source->whereIn('company_id', $type === 'CustPymt'
+                        ? array_filter([(int) $customer->id, (int) ($customer->raw_payload['parent_id'] ?? 0)])
+                        : [(int) $customer->id])->where('type', $type))
+                    ->with('transaction:id,company_id,type,number,transaction_date,currency_id,synced_at')
                     ->orderBy('transaction_id')->orderBy('target_line_id')->orderBy('id')]);
             }
         }

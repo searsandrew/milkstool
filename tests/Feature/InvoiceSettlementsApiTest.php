@@ -25,6 +25,7 @@ it('returns invoice payment and credit allocations without replacing source bala
     $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
         ->assertJsonCount(1, 'data.applied_payments')->assertJsonCount(1, 'data.applied_credits')
         ->assertJsonPath('data.applied_payments.0.source_netsuite_id', 1517)
+        ->assertJsonPath('data.applied_payments.0.source_accessible', true)
         ->assertJsonPath('data.applied_payments.0.source_number', 'PAY-1517')
         ->assertJsonPath('data.applied_payments.0.source_date', '2026-01-02')
         ->assertJsonPath('data.applied_payments.0.source_currency_id', 1)
@@ -36,7 +37,7 @@ it('returns invoice payment and credit allocations without replacing source bala
         ->assertJsonPath('data.applied_credits.0.foreign_amount', '20.00000000')
         ->assertJsonPath('data.foreign_amount_paid', '70.00000000')
         ->assertJsonPath('data.foreign_amount_unpaid', '30.00000000')
-        ->assertJsonPath('data.settlements_scope', 'same_customer')
+        ->assertJsonPath('data.settlements_scope', 'invoice_customer')
         ->assertJsonMissingPath('data.applied_payments.0.raw_payload')
         ->assertJsonMissingPath('data.applied_credits.0.transaction')
         ->assertJsonPath('sync.payments.history_backfilled', false);
@@ -94,4 +95,26 @@ it('distinguishes an empty settlement history from one that has not been synced'
         ->assertJsonMissingPath('data.0.applied_payments')->assertJsonMissingPath('data.0.applied_credits')
         ->assertJsonMissingPath('data.0.settlements_scope');
     Http::assertNothingSent();
+});
+
+it('shows only parent payment allocations to the requested invoice without granting source access', function () {
+    $parent = Company::factory()->create();
+    $this->company->update(['raw_payload' => ['parent_id' => (string) $parent->id]]);
+    Transaction::factory()->for($this->company)->create(['id' => 1347, 'type' => 'CustInvc']);
+    $payment = Transaction::factory()->for($parent)->create(['id' => 1517, 'type' => 'CustPymt', 'number' => 'PARENT-PAY', 'foreign_total' => '52412.67']);
+    foreach ([[1347, 16, '989.24'], [1347, 16, '9.99'], [1348, 16, '123.45'], [1349, 17, '456.78'], [1347, 17, '987.65']] as $line => [$target, $customer, $amount]) {
+        PaymentApplication::factory()->for($payment)->create(['payment_line_id' => $line, 'target_netsuite_id' => $target,
+            'target_customer_id' => $customer, 'target_type' => 'CustInvc', 'foreign_amount' => $amount]);
+    }
+
+    $response = $this->getJson('/api/v1/customers/16/transactions/1347')->assertOk()
+        ->assertJsonCount(2, 'data.applied_payments')->assertJsonPath('data.applied_payments.0.source_accessible', false)
+        ->assertJsonPath('data.applied_payments.0.source_number', 'PARENT-PAY')
+        ->assertJsonPath('data.applied_payments.0.foreign_amount', '989.24000000')
+        ->assertJsonPath('data.applied_payments.1.foreign_amount', '9.99000000')
+        ->assertJsonMissingPath('data.applied_payments.0.transaction')
+        ->assertJsonMissingPath('data.applied_payments.0.raw_payload');
+    expect($response->getContent())->not->toContain('52412.67', '123.45000000', '456.78000000', '987.65000000');
+    $this->getJson('/api/v1/customers/16/transactions/1517')->assertNotFound();
+    $this->getJson('/api/v1/customers/'.$parent->id.'/transactions/1517')->assertForbidden();
 });
