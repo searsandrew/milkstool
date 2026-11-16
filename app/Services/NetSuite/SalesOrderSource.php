@@ -156,6 +156,8 @@ class SalesOrderSource
                 SELECT transactionline.transaction AS transaction_id, transactionline.id AS line_id,
                     transactionline.item AS item_id, item.itemid AS item_number, transactionline.itemtype AS item_type,
                     transactionline.quantity, transactionline.rate, transactionline.netamount AS amount,
+                    transactionline.quantityshiprecv AS quantity_shipped,
+                    transactionline.quantitybackordered AS quantity_backordered, transactionline.isclosed AS is_closed,
                     transactionline.memo, transactionline.mainline, transactionline.taxline,
                     transactionline.transactiondiscount AS discount_line,
                     transactionline.transactionlinetype AS line_type
@@ -177,6 +179,9 @@ class SalesOrderSource
                     'item_number' => ['nullable', 'string', 'max:255'],
                     'memo' => ['nullable', 'string'],
                     'quantity' => ['nullable', 'numeric'],
+                    'quantity_shipped' => ['nullable', 'numeric'],
+                    'quantity_backordered' => ['nullable', 'numeric', 'min:0'],
+                    'is_closed' => ['nullable', 'in:T,F'],
                     'rate' => ['nullable', 'numeric'],
                     'amount' => ['nullable', 'numeric'],
                     'mainline' => ['required', 'in:T,F'],

@@ -214,7 +214,7 @@ class SyncSalesOrders
                     'is_tax_line' => $line['taxline'] === 'T',
                     'is_discount_line' => $line['discount_line'] === 'T',
                     'line_type' => $line['line_type'] ?? null,
-                    'raw_payload' => $line,
+                    'raw_payload' => [...$line, 'is_closed' => isset($line['is_closed']) ? $line['is_closed'] === 'T' : null],
                 ]);
             }
 

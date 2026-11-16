@@ -99,6 +99,9 @@ class CustomerTransactionController extends Controller
                 ->orderBy('payment_line_id')->orderBy('target_netsuite_id')->orderBy('target_line_id'), 'lines' => fn ($query) => $query->orderBy('netsuite_line_id')])->firstOrFail();
 
         if ($document->type === 'SalesOrd') {
+            $document->setRelation('invoices', $customer->transactions()->where('type', 'CustInvc')
+                ->whereHas('lines', fn (Builder $lines) => $lines->where('source_transaction_id', $document->id))
+                ->orderBy('transaction_date')->orderBy('id')->get(['id', 'number']));
             $details = $document->raw_payload['sales_order_details'] ?? [];
             if (($details['header_updated_at'] ?? null) !== $document->netsuite_updated_at?->utc()->format('Y-m-d H:i:s')
                 || ! isset($details['synced_at']) || CarbonImmutable::parse($details['synced_at'])->lte(now()->subMinutes(15))) {

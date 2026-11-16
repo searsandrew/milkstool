@@ -6,6 +6,7 @@ use App\Jobs\RefreshSalesOrderDetails;
 use App\Models\ApiClient;
 use App\Models\Company;
 use App\Models\Transaction;
+use App\Models\TransactionLine;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
@@ -121,3 +122,44 @@ it('hides details saved for an older order version while queuing a fresh copy', 
 
     Queue::assertPushed(RefreshSalesOrderDetails::class, 1);
 });
+
+it('imports exact fulfillment quantities and exposes closed lines through the customer API', function () {
+    fakeSalesOrderImport([sourceLine(['quantity_shipped' => '-1.25', 'quantity_backordered' => '0.5', 'is_closed' => 'T'])]);
+    app(SyncSalesOrders::class)->handle(16);
+    Queue::fake([RefreshSalesOrderDetails::class]);
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+
+    $this->getJson('/api/v1/customers/16/transactions/101')->assertOk()
+        ->assertJsonPath('data.lines.0.quantity', '-2.50000000')
+        ->assertJsonPath('data.lines.0.quantity_shipped', '1.25000000')
+        ->assertJsonPath('data.lines.0.quantity_backordered', '0.50000000')
+        ->assertJsonPath('data.lines.0.is_closed', true);
+    Http::assertSent(fn ($request) => str_contains($request['q'] ?? '', 'transactionline.quantityshiprecv AS quantity_shipped'));
+});
+
+it('lists each related invoice once without exposing another customer or missing source records', function () {
+    $order = detailOrder();
+    Queue::fake([RefreshSalesOrderDetails::class]);
+    foreach ([201, 202, 203, 204] as $id) {
+        $invoice = Transaction::factory()->create(['id' => $id, 'company_id' => $id === 203 ? Company::factory()->create()->id : 16,
+            'type' => 'CustInvc', 'number' => 'INV-'.$id, 'source_missing_at' => $id === 204 ? now() : null]);
+        foreach ([1, 2] as $lineId) {
+            TransactionLine::factory()->for($invoice)->create(['netsuite_line_id' => $lineId, 'source_transaction_id' => 101]);
+        }
+    }
+    $unrelated = Transaction::factory()->create(['id' => 205, 'company_id' => 16, 'type' => 'CustInvc']);
+    TransactionLine::factory()->for($unrelated)->create(['source_transaction_id' => 999]);
+    Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
+
+    $this->getJson('/api/v1/customers/16/transactions/101')->assertOk()->assertJsonCount(2, 'data.invoices')
+        ->assertJsonFragment(['id' => 201, 'number' => 'INV-201'])->assertJsonFragment(['id' => 202, 'number' => 'INV-202'])
+        ->assertJsonMissing(['number' => 'INV-203'])->assertJsonMissing(['number' => 'INV-204']);
+});
+
+it('retains the saved order when source fulfillment data is invalid', function (array $fields) {
+    $order = detailOrder();
+    fakeSalesOrderImport([sourceLine($fields)]);
+
+    expect(fn () => app(SyncSalesOrders::class)->handle(16))->toThrow(ValidationException::class);
+    expect($order->fresh()->foreign_total)->toBe('222.98000000');
+})->with([[['quantity_shipped' => 'invalid']], [['quantity_backordered' => '-1']], [['is_closed' => 'invalid']]]);

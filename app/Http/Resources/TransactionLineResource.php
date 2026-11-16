@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use Brick\Math\BigDecimal;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -17,6 +18,8 @@ class TransactionLineResource extends JsonResource
             'quantity_received' => $this->when(array_key_exists('quantity_received', $this->raw_payload), $this->raw_payload['quantity_received'] ?? null),
             'quantity_billed' => $this->when(array_key_exists('quantity_billed', $this->raw_payload), $this->raw_payload['quantity_billed'] ?? null),
             'is_closed' => $this->when(array_key_exists('is_closed', $this->raw_payload), $this->raw_payload['is_closed'] ?? null),
+            'quantity_shipped' => $this->when(array_key_exists('quantity_shipped', $this->raw_payload), fn () => isset($this->raw_payload['quantity_shipped']) ? (string) BigDecimal::of((string) $this->raw_payload['quantity_shipped'])->abs()->toScale(8) : null),
+            'quantity_backordered' => $this->when(array_key_exists('quantity_backordered', $this->raw_payload), fn () => isset($this->raw_payload['quantity_backordered']) ? (string) BigDecimal::of((string) $this->raw_payload['quantity_backordered'])->toScale(8) : null),
             'item_id' => $this->item_id,
             'item_number' => $this->item_number,
             'item_type' => $this->raw_payload['item_type'] ?? null,
