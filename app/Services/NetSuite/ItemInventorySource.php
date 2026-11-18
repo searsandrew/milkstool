@@ -99,6 +99,7 @@ class ItemInventorySource
             if (! $unit['baseUnit']) {
                 continue;
             }
+            $unit['internalId'] ??= $this->unitIdFromLink($unit, (int) $items[0]['unit_type_id']);
             if ($base !== null || Validator::make($unit, [
                 'internalId' => ['required', 'integer', 'min:1', 'max:'.PHP_INT_MAX],
                 'unitName' => ['required', 'string'], 'conversionRate' => ['required', 'numeric'],
@@ -115,6 +116,22 @@ class ItemInventorySource
         }
 
         return $base;
+    }
+
+    /** @param array<string, mixed> $unit */
+    private function unitIdFromLink(array $unit, int $unitTypeId): ?string
+    {
+        foreach (is_array($unit['links'] ?? null) ? $unit['links'] : [] as $link) {
+            if (! is_array($link) || ($link['rel'] ?? null) !== 'self' || ! is_string($link['href'] ?? null)) {
+                continue;
+            }
+            $path = parse_url($link['href'], PHP_URL_PATH);
+            if (is_string($path) && preg_match('#\A/services/rest/record/v1/unitstype/'.$unitTypeId.'/uom/([1-9][0-9]*)/?\z#i', $path, $matches)) {
+                return $matches[1];
+            }
+        }
+
+        return null;
     }
 
     /** @param array<string, mixed> $balance
