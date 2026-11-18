@@ -10,17 +10,20 @@ use Laravel\Sanctum\NewAccessToken;
 
 class IssueApiToken extends Command
 {
-    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--orders : Allow requesting imports of submitted sales orders for granted customers} {--activity : Allow recording activity for granted customers} {--days=90 : Token lifetime in days} {--customer=* : Grant transaction reads for these NetSuite IDs, or all for a trusted service}';
+    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--items : Allow item and UPC reads} {--inventory : Allow live inventory reads, requires --items} {--orders : Allow requesting imports of submitted sales orders for granted customers} {--activity : Allow recording activity for granted customers} {--days=90 : Token lifetime in days} {--customer=* : Grant transaction reads for these NetSuite IDs, or all for a trusted service}';
 
-    protected $description = 'Create a client if needed and issue an API token with optional customer transaction access';
+    protected $description = 'Create a client if needed and issue an API token with optional item, inventory, and customer transaction access';
 
     public function handle(): int
     {
         $validator = Validator::make([
+            'inventory' => $this->option('inventory'),
+            'items' => $this->option('items'),
             'client' => $this->argument('client'),
             'days' => $this->option('days'),
             'customers' => $this->option('customer'),
         ], [
+            'items' => ['accepted_if:inventory,true'],
             'client' => ['required', 'string', 'max:100', 'regex:/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/'],
             'days' => ['required', 'integer', 'between:1,3650'],
             'customers' => ['array', ...(($this->option('activity') || $this->option('orders')) ? ['min:1'] : [])],
@@ -36,6 +39,12 @@ class IssueApiToken extends Command
         }
 
         $abilities = ['status:read'];
+        if ($this->option('items')) {
+            $abilities[] = 'items:read';
+        }
+        if ($this->option('inventory')) {
+            $abilities[] = 'inventory:read';
+        }
         if ($this->option('customer') !== []) {
             $abilities[] = 'transactions:read';
             foreach (array_unique($this->option('customer')) as $customer) {

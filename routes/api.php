@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\CustomerInvoiceSummaryController;
 use App\Http\Controllers\Api\V1\CustomerOrderRefreshController;
 use App\Http\Controllers\Api\V1\CustomerTransactionController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\StatusController;
 use App\Http\Middleware\AuthorizeCustomerRead;
 use Illuminate\Support\Facades\Route;
@@ -38,3 +39,10 @@ Route::post('v1/customers/{customer:id}/order-refreshes', CustomerOrderRefreshCo
     ->whereNumber('customer')
     ->middleware(['auth:sanctum', 'abilities:orders:refresh', AuthorizeCustomerRead::class, 'throttle:10,1'])
     ->name('api.v1.customers.order-refreshes');
+
+Route::prefix('v1/items')->name('api.v1.items.')
+    ->middleware(['auth:sanctum', 'abilities:items:read', 'throttle:60,1', 'cache.headers:private;no_store'])
+    ->group(function (): void {
+        Route::get('/', [ItemController::class, 'index'])->name('index');
+        Route::get('{item}', [ItemController::class, 'show'])->whereNumber('item')->name('show');
+    });
