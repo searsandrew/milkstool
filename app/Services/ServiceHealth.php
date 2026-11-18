@@ -13,7 +13,7 @@ use Throwable;
 
 class ServiceHealth
 {
-    public const array QUEUES = ['customers', 'balances', 'sales-orders', 'invoices', 'credit-memos', 'payments', 'return-authorizations'];
+    public const array QUEUES = ['interactive-refreshes', 'customers', 'balances', 'sales-orders', 'invoices', 'credit-memos', 'payments', 'return-authorizations'];
 
     /** @return list<string> */
     public static function queues(): array

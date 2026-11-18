@@ -29,7 +29,7 @@ class RefreshSubmittedOrder implements ShouldBeUnique, ShouldQueue
     {
         $this->expiresAt = now()->addMinutes(15)->timestamp;
         $this->onConnection('netsuite');
-        $this->onQueue('sales-orders');
+        $this->onQueue('interactive-refreshes');
     }
 
     public function uniqueId(): string

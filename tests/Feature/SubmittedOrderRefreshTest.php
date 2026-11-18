@@ -38,6 +38,7 @@ it('queues a deduplicated refresh without contacting NetSuite in the request', f
     $this->postJson('/api/v1/customers/16/order-refreshes', ['sales_order_id' => 101])->assertAccepted();
 
     $this->assertDatabaseCount('jobs', 1);
+    $this->assertDatabaseHas('jobs', ['queue' => 'interactive-refreshes']);
     expect($this->company->refresh()->portal_last_active_at->eq(now()))->toBeTrue();
     Http::assertNothingSent();
 });
@@ -69,19 +70,19 @@ it('retries a not yet visible order then imports it without advancing history ch
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
         ->push(sourcePage([]))->push(sourcePage([sourceOrder()]))->push(sourcePage([sourceLine()]))->push(sourcePage([sourceOrder()]))]);
     RefreshSubmittedOrder::dispatch(16, 101);
-    Queue::connection('netsuite')->pop('sales-orders')->fire();
+    Queue::connection('netsuite')->pop('interactive-refreshes')->fire();
     $this->assertDatabaseCount('transactions', 0);
     $this->assertDatabaseCount('jobs', 1);
     $this->travel(61)->seconds();
 
-    Queue::connection('netsuite')->pop('sales-orders')->fire();
+    Queue::connection('netsuite')->pop('interactive-refreshes')->fire();
 
     $this->assertDatabaseCount('transaction_lines', 1);
     expect(Transaction::query()->sole()->id)->toBe(101);
     expect($this->company->refresh()->sales_orders_synced_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 12:00:00');
     expect($this->company->sales_orders_checkpoint_at->format('Y-m-d H:i:s'))->toBe('2026-09-01 11:58:00');
     $this->assertDatabaseHas('jobs', ['queue' => 'balances']);
-    $this->assertDatabaseMissing('jobs', ['queue' => 'sales-orders']);
+    $this->assertDatabaseMissing('jobs', ['queue' => 'interactive-refreshes']);
     Http::assertSentCount(4);
 });
 

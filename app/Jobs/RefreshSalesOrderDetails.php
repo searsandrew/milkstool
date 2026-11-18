@@ -20,7 +20,7 @@ class RefreshSalesOrderDetails implements ShouldBeUnique, ShouldQueue
     public function __construct(public int $customerId, public int $orderId)
     {
         $this->onConnection('netsuite');
-        $this->onQueue('sales-orders');
+        $this->onQueue('interactive-refreshes');
     }
 
     public function uniqueId(): string

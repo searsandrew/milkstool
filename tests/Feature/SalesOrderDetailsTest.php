@@ -72,7 +72,7 @@ it('queues missing details only after customer authorization', function () {
     Queue::assertNothingPushed();
     Sanctum::actingAs(ApiClient::factory()->create(), ['transactions:read', 'customer:16']);
     $this->getJson('/api/v1/customers/16/transactions/101')->assertOk()->assertJsonPath('data.sales_order_details', null);
-    Queue::assertPushed(RefreshSalesOrderDetails::class, fn ($job) => $job->customerId === 16 && $job->orderId === 101);
+    Queue::assertPushed(RefreshSalesOrderDetails::class, fn ($job) => $job->customerId === 16 && $job->orderId === 101 && $job->queue === 'interactive-refreshes');
 });
 
 it('retains saved details when tracking is incomplete', function () {
