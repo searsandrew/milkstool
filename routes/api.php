@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\CustomerActivityController;
 use App\Http\Controllers\Api\V1\CustomerBalanceController;
+use App\Http\Controllers\Api\V1\CustomerInvoiceRefreshController;
 use App\Http\Controllers\Api\V1\CustomerInvoiceSummaryController;
 use App\Http\Controllers\Api\V1\CustomerOrderRefreshController;
 use App\Http\Controllers\Api\V1\CustomerTransactionController;
@@ -46,3 +47,8 @@ Route::prefix('v1/items')->name('api.v1.items.')
         Route::get('/', [ItemController::class, 'index'])->name('index');
         Route::get('{item}', [ItemController::class, 'show'])->whereNumber('item')->name('show');
     });
+
+Route::post('v1/customers/{customer:id}/invoice-refreshes', CustomerInvoiceRefreshController::class)
+    ->whereNumber('customer')
+    ->middleware(['auth:sanctum', 'abilities:invoices:refresh', AuthorizeCustomerRead::class, 'throttle:10,1'])
+    ->name('api.v1.customers.invoice-refreshes');

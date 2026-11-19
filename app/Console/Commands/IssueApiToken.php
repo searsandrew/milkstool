@@ -10,7 +10,7 @@ use Laravel\Sanctum\NewAccessToken;
 
 class IssueApiToken extends Command
 {
-    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--items : Allow item and UPC reads} {--inventory : Allow live inventory reads, requires --items} {--orders : Allow requesting imports of submitted sales orders for granted customers} {--activity : Allow recording activity for granted customers} {--days=90 : Token lifetime in days} {--customer=* : Grant transaction reads for these NetSuite IDs, or all for a trusted service}';
+    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--items : Allow item and UPC reads} {--inventory : Allow live inventory reads, requires --items} {--invoices : Allow targeted invoice refreshes for granted customers} {--orders : Allow requesting imports of submitted sales orders for granted customers} {--activity : Allow recording activity for granted customers} {--days=90 : Token lifetime in days} {--customer=* : Grant transaction reads for these NetSuite IDs, or all for a trusted service}';
 
     protected $description = 'Create a client if needed and issue an API token with optional item, inventory, and customer transaction access';
 
@@ -26,7 +26,7 @@ class IssueApiToken extends Command
             'items' => ['accepted_if:inventory,true'],
             'client' => ['required', 'string', 'max:100', 'regex:/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/'],
             'days' => ['required', 'integer', 'between:1,3650'],
-            'customers' => ['array', ...(($this->option('activity') || $this->option('orders')) ? ['min:1'] : [])],
+            'customers' => ['array', ...(($this->option('activity') || $this->option('orders') || $this->option('invoices')) ? ['min:1'] : [])],
             'customers.*' => ['required', 'string', 'regex:/\A(?:all|[1-9][0-9]*)\z/'],
         ]);
 
@@ -58,6 +58,10 @@ class IssueApiToken extends Command
 
         if ($this->option('orders')) {
             $abilities[] = 'orders:refresh';
+        }
+
+        if ($this->option('invoices')) {
+            $abilities[] = 'invoices:refresh';
         }
 
         $token = DB::transaction(function () use ($abilities): NewAccessToken {
