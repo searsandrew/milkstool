@@ -10,23 +10,25 @@ use Laravel\Sanctum\NewAccessToken;
 
 class IssueApiToken extends Command
 {
-    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--items : Allow item and UPC reads} {--inventory : Allow live inventory reads, requires --items} {--invoices : Allow targeted invoice refreshes for granted customers} {--orders : Allow requesting imports of submitted sales orders for granted customers} {--activity : Allow recording activity for granted customers} {--days=90 : Token lifetime in days} {--customer=* : Grant transaction reads for these NetSuite IDs, or all for a trusted service}';
+    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--bins : Allow bin lookup and contents, requires --items and --inventory} {--items : Allow item and UPC reads} {--inventory : Allow live inventory reads, requires --items} {--credit-memos : Allow targeted credit memo refreshes for granted customers} {--invoices : Allow targeted invoice refreshes for granted customers} {--orders : Allow requesting imports of submitted sales orders for granted customers} {--activity : Allow recording activity for granted customers} {--days=90 : Token lifetime in days} {--customer=* : Grant transaction reads for these NetSuite IDs, or all for a trusted service}';
 
     protected $description = 'Create a client if needed and issue an API token with optional item, inventory, and customer transaction access';
 
     public function handle(): int
     {
         $validator = Validator::make([
+            'bins' => $this->option('bins'),
             'inventory' => $this->option('inventory'),
             'items' => $this->option('items'),
             'client' => $this->argument('client'),
             'days' => $this->option('days'),
             'customers' => $this->option('customer'),
         ], [
-            'items' => ['accepted_if:inventory,true'],
+            'items' => ['accepted_if:inventory,true', 'accepted_if:bins,true'],
+            'inventory' => ['accepted_if:bins,true'],
             'client' => ['required', 'string', 'max:100', 'regex:/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/'],
             'days' => ['required', 'integer', 'between:1,3650'],
-            'customers' => ['array', ...(($this->option('activity') || $this->option('orders') || $this->option('invoices')) ? ['min:1'] : [])],
+            'customers' => ['array', ...(($this->option('activity') || $this->option('orders') || $this->option('invoices') || $this->option('credit-memos')) ? ['min:1'] : [])],
             'customers.*' => ['required', 'string', 'regex:/\A(?:all|[1-9][0-9]*)\z/'],
         ]);
 
@@ -39,6 +41,9 @@ class IssueApiToken extends Command
         }
 
         $abilities = ['status:read'];
+        if ($this->option('bins')) {
+            $abilities[] = 'bins:read';
+        }
         if ($this->option('items')) {
             $abilities[] = 'items:read';
         }
@@ -62,6 +67,10 @@ class IssueApiToken extends Command
 
         if ($this->option('invoices')) {
             $abilities[] = 'invoices:refresh';
+        }
+
+        if ($this->option('credit-memos')) {
+            $abilities[] = 'credit-memos:refresh';
         }
 
         $token = DB::transaction(function () use ($abilities): NewAccessToken {

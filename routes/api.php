@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\V1\BinController;
 use App\Http\Controllers\Api\V1\CustomerActivityController;
 use App\Http\Controllers\Api\V1\CustomerBalanceController;
+use App\Http\Controllers\Api\V1\CustomerCreditMemoRefreshController;
 use App\Http\Controllers\Api\V1\CustomerInvoiceRefreshController;
 use App\Http\Controllers\Api\V1\CustomerInvoiceSummaryController;
 use App\Http\Controllers\Api\V1\CustomerOrderRefreshController;
@@ -52,3 +54,16 @@ Route::post('v1/customers/{customer:id}/invoice-refreshes', CustomerInvoiceRefre
     ->whereNumber('customer')
     ->middleware(['auth:sanctum', 'abilities:invoices:refresh', AuthorizeCustomerRead::class, 'throttle:10,1'])
     ->name('api.v1.customers.invoice-refreshes');
+
+Route::prefix('v1/bins')->name('api.v1.bins.')
+    ->middleware(['auth:sanctum', 'abilities:bins:read', 'throttle:60,1', 'cache.headers:private;no_store'])
+    ->group(function (): void {
+        Route::get('/', [BinController::class, 'index'])->name('index');
+        Route::get('{bin}', [BinController::class, 'show'])->whereNumber('bin')
+            ->middleware('abilities:items:read,inventory:read')->name('show');
+    });
+
+Route::post('v1/customers/{customer:id}/credit-memo-refreshes', CustomerCreditMemoRefreshController::class)
+    ->whereNumber('customer')
+    ->middleware(['auth:sanctum', 'abilities:credit-memos:refresh', AuthorizeCustomerRead::class, 'throttle:10,1'])
+    ->name('api.v1.customers.credit-memo-refreshes');
