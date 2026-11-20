@@ -3,6 +3,7 @@
 use App\Models\ApiClient;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\PersonalAccessToken;
 use Laravel\Sanctum\Sanctum;
@@ -56,13 +57,13 @@ it('queries vendor purchase orders separately without customer PO references', f
     Http::assertSent(fn (Request $request): bool => str_contains($request['q'], "transaction.type = 'PurchOrd'"));
 });
 
-it('limits history to twenty records and reports that older orders exist', function () {
+it('limits history to ten records and reports that older orders exist', function () {
     Sanctum::actingAs(ApiClient::factory()->create(), ['items:read', 'item-orders:read']);
-    $rows = array_map(fn (int $id): array => itemHistoryRow($id), range(921, 901));
+    $rows = array_map(fn (int $id): array => itemHistoryRow($id), range(911, 901));
     Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::response(sourcePage($rows))]);
 
-    $this->getJson('/api/v1/items/431/orders?type=sales')->assertOk()->assertJsonCount(20, 'data')
-        ->assertJsonPath('data.0.id', 921)->assertJsonPath('data.19.id', 902)->assertJsonPath('meta.has_more', true);
+    $this->getJson('/api/v1/items/431/orders?type=sales')->assertOk()->assertJsonCount(10, 'data')
+        ->assertJsonPath('data.0.id', 911)->assertJsonPath('data.9.id', 902)->assertJsonPath('meta.has_more', true);
 
     Http::assertSentCount(1);
 });
@@ -124,3 +125,34 @@ it('issues item history access only with the item read flag', function () {
     $token = PersonalAccessToken::findToken($matches[0]);
     expect($token->abilities)->toContain('items:read', 'item-orders:read')->not->toContain('customers:all');
 });
+
+it('continues after the last date and ID without duplicating same-day orders', function () {
+    Sanctum::actingAs(ApiClient::factory()->create(), ['items:read', 'item-orders:read']);
+    Http::fake(['https://netsuite.example/services/rest/query/v1/suiteql*' => Http::sequence()
+        ->push(sourcePage(array_map(fn (int $id): array => itemHistoryRow($id), range(911, 901))))
+        ->push(sourcePage([itemHistoryRow(901), array_replace(itemHistoryRow(950), ['order_date' => '2026-11-18'])]))]);
+    $first = $this->getJson('/api/v1/items/431/orders?type=sales')->assertOk()->assertJsonCount(10, 'data');
+    $cursor = $first->json('meta.next_cursor');
+
+    $this->getJson('/api/v1/items/431/orders?type=sales&cursor='.urlencode($cursor))->assertOk()
+        ->assertJsonCount(2, 'data')->assertJsonPath('data.0.id', 901)->assertJsonPath('meta.next_cursor', null);
+
+    Http::assertSent(fn (Request $request): bool => str_contains($request['q'], 'transaction.id < 902')
+        && str_contains($request['q'], "transaction.trandate < TO_DATE('2026-11-19', 'YYYY-MM-DD')"));
+});
+
+it('rejects tampered or mismatched pagination cursors without querying NetSuite', function (string $case) {
+    Sanctum::actingAs(ApiClient::factory()->create(), ['items:read', 'item-orders:read']);
+    $payload = ['item_id' => 431, 'type' => 'sales', 'date' => '2026-11-19', 'id' => 900];
+    if ($case === 'wrong item') {
+        $payload['item_id'] = 999;
+    } elseif ($case === 'wrong type') {
+        $payload['type'] = 'purchase';
+    }
+    $cursor = $case === 'tampered' ? 'invalid-cursor' : Crypt::encryptString(json_encode($payload));
+
+    $this->getJson('/api/v1/items/431/orders?type=sales&cursor='.urlencode($cursor))
+        ->assertUnprocessable()->assertJsonValidationErrors('cursor');
+
+    Http::assertNothingSent();
+})->with(['tampered', 'wrong item', 'wrong type']);
