@@ -10,13 +10,14 @@ use Laravel\Sanctum\NewAccessToken;
 
 class IssueApiToken extends Command
 {
-    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--bins : Allow bin lookup and contents, requires --items and --inventory} {--items : Allow item and UPC reads} {--inventory : Allow live inventory reads, requires --items} {--credit-memos : Allow targeted credit memo refreshes for granted customers} {--invoices : Allow targeted invoice refreshes for granted customers} {--orders : Allow requesting imports of submitted sales orders for granted customers} {--activity : Allow recording activity for granted customers} {--days=90 : Token lifetime in days} {--customer=* : Grant transaction reads for these NetSuite IDs, or all for a trusted service}';
+    protected $signature = 'milkstool:token:issue {client : Lowercase client slug} {--item-orders : Allow recent sales and purchase order history by item, requires --items} {--bins : Allow bin lookup and contents, requires --items and --inventory} {--items : Allow item and UPC reads} {--inventory : Allow live inventory reads, requires --items} {--credit-memos : Allow targeted credit memo refreshes for granted customers} {--invoices : Allow targeted invoice refreshes for granted customers} {--orders : Allow requesting imports of submitted sales orders for granted customers} {--activity : Allow recording activity for granted customers} {--days=90 : Token lifetime in days} {--customer=* : Grant transaction reads for these NetSuite IDs, or all for a trusted service}';
 
     protected $description = 'Create a client if needed and issue an API token with optional item, inventory, and customer transaction access';
 
     public function handle(): int
     {
         $validator = Validator::make([
+            'item_orders' => $this->option('item-orders'),
             'bins' => $this->option('bins'),
             'inventory' => $this->option('inventory'),
             'items' => $this->option('items'),
@@ -24,7 +25,7 @@ class IssueApiToken extends Command
             'days' => $this->option('days'),
             'customers' => $this->option('customer'),
         ], [
-            'items' => ['accepted_if:inventory,true', 'accepted_if:bins,true'],
+            'items' => ['accepted_if:inventory,true', 'accepted_if:bins,true', 'accepted_if:item_orders,true'],
             'inventory' => ['accepted_if:bins,true'],
             'client' => ['required', 'string', 'max:100', 'regex:/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/'],
             'days' => ['required', 'integer', 'between:1,3650'],
@@ -41,6 +42,9 @@ class IssueApiToken extends Command
         }
 
         $abilities = ['status:read'];
+        if ($this->option('item-orders')) {
+            $abilities[] = 'item-orders:read';
+        }
         if ($this->option('bins')) {
             $abilities[] = 'bins:read';
         }

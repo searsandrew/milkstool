@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\CustomerOrderRefreshController;
 use App\Http\Controllers\Api\V1\CustomerTransactionController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ItemController;
+use App\Http\Controllers\Api\V1\ItemOrderController;
 use App\Http\Controllers\Api\V1\StatusController;
 use App\Http\Middleware\AuthorizeCustomerRead;
 use Illuminate\Support\Facades\Route;
@@ -47,6 +48,8 @@ Route::prefix('v1/items')->name('api.v1.items.')
     ->middleware(['auth:sanctum', 'abilities:items:read', 'throttle:60,1', 'cache.headers:private;no_store'])
     ->group(function (): void {
         Route::get('/', [ItemController::class, 'index'])->name('index');
+        Route::get('{item}/orders', ItemOrderController::class)->whereNumber('item')
+            ->middleware('abilities:item-orders:read')->name('orders');
         Route::get('{item}', [ItemController::class, 'show'])->whereNumber('item')->name('show');
     });
 
